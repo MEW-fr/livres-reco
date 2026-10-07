@@ -133,3 +133,29 @@ def load_answers(user_id, db_path=DB_PATH):
         rows = conn.execute("SELECT question_id, answer FROM survey_answers WHERE user_id = ?",
                             (user_id,)).fetchall()
     return {row["question_id"]: json.loads(row["answer"]) for row in rows}
+
+
+# --- Comptes utilisateurs ---------------------------------------------------------------
+
+def create_user(username, email, password_hash, db_path=DB_PATH):
+    """Crée un compte et renvoie son id."""
+    with get_connection(db_path) as conn:
+        cursor = conn.execute(
+            "INSERT INTO users (username, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
+            (username, email, password_hash, datetime.now().isoformat(timespec="seconds")),
+        )
+        return cursor.lastrowid
+
+
+def find_user(login, db_path=DB_PATH):
+    """Utilisateur dont le pseudo ou l'e-mail vaut login (sans tenir compte de la casse)."""
+    with get_connection(db_path) as conn:
+        return conn.execute(
+            "SELECT * FROM users WHERE lower(username) = lower(?) OR lower(email) = lower(?)",
+            (login, login),
+        ).fetchone()
+
+
+def get_user(user_id, db_path=DB_PATH):
+    with get_connection(db_path) as conn:
+        return conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()

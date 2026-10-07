@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_macros.html" import logo %}
+{% block title %}Accueil · Et maintenant, je lis quoi ?{% endblock %}
+{% block body_class %}page-app{% endblock %}
+{% block body %}
+<header class="topbar">
+  {{ logo() }}
+  <div class="topbar-right">
+    <a class="btn btn-ghost btn-small" href="{{ url_for('auth.deconnexion') }}">Se déconnecter</a>
+    <span class="avatar" title="{{ g.user.username }}">{{ g.user.username[0]|upper }}</span>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <nav class="nav">
+      <a class="nav-item active" href="{{ url_for('main.accueil') }}">⌂ Accueil</a>
+      <span class="nav-item disabled" title="Bientôt disponible">▤ Ma bibliothèque</span>
+      <span class="nav-item disabled" title="Bientôt disponible">◎ Mon profil</span>
+    </nav>
+    <div class="profile-mini">
+      <span class="eyebrow-small">TON PROFIL</span>
+      <strong>{{ g.user.profile_label }}</strong>
+      <span class="face" aria-hidden="true">•‿•</span>
+    </div>
+  </aside>
+
+  <main class="content">
+    <p class="eyebrow">COUCOU {{ g.user.username|upper }} ✦</p>
+    <h1 class="home-title">On lit quoi, maintenant ?</h1>
+    <p class="muted">Des suggestions qui ressemblent à tes goûts, pas seulement aux classements.</p>
+
+    <section class="card section-card">
+      <p class="eyebrow">TON PROCHAIN CRUSH LECTURE</p>
+      <h2>À lire ensuite</h2>
+      <p class="muted">Tes recommandations arrivent très bientôt ici.</p>
+    </section>
+  </main>
+</div>
+{% endblock %}
