@@ -70,6 +70,18 @@ def test_livres_du_moment(path):
         assert "\ufffd" not in book["description"]
 
 
+def test_livre_du_moment_impose(path):
+    result = seed.run(path, today=TODAY, out=quiet)
+    assert result["families"]["réel et idées"]["moment"][0] == "Reflets dans un oeil d'homme"
+    # Masqué : retour au choix automatique.
+    with db.get_connection(path) as conn:
+        conn.execute("UPDATE books SET hidden = 1 WHERE title = 'Reflets dans un oeil d''homme'")
+    engine.reset_cache()
+    result = seed.run(path, reset=True, today=TODAY, out=quiet)
+    title, readers = result["families"]["réel et idées"]["moment"]
+    assert title != "Reflets dans un oeil d'homme" and 4 <= readers <= 8
+
+
 def test_premiere_vague_inchangee(path):
     """Les personas de la première vague ne dépendent pas de la seconde."""
     first = seed.PERSONAS[:seed.FIRST_WAVE]

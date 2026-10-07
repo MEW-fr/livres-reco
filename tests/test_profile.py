@@ -263,6 +263,20 @@ def test_neutral_dimension_stays_out_of_p_after_learning():
     assert prof.novelty_for(p, [book(2, themes=["amour"])]) == {2: 100}  # genres appris ignorés
 
 
+def test_recompute_does_not_depend_on_order():
+    p = prof.build_profile(answers(q1=["thriller"]))
+    b = book(main="aventure", cats=["aventure"], themes=["voyage"])
+    # Une note basse puis une haute : écarts additionnés (0), pas de plancher intermédiaire.
+    notes = [(b, 1), (b, 5)]
+    first = copy.deepcopy(prof.recompute_learned(p, notes))
+    assert prof.recompute_learned(p, notes[::-1]) == first
+    assert "aventure" not in p["genres"] and p["themes"] == {}
+    # Le plafond s'applique une seule fois, sur la somme : 8 hautes, 2 basses -> +0,30.
+    mixed = [(b, 5)] * 8 + [(b, 1)] * 2
+    assert prof.recompute_learned(p, mixed)["genres"]["aventure"] == 0.30
+    assert prof.recompute_learned(p, mixed[::-1])["genres"]["aventure"] == 0.30
+
+
 def test_negative_rating_does_not_create():
     p = prof.build_profile(answers(q1=["thriller"]))
     prof.recompute_learned(p, [(book(main="romance", cats=["romance"], themes=["amour"]), 1)])

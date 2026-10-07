@@ -41,6 +41,7 @@ FIRST_WAVE = 23        # personas de la première vague, inchangés
 MOMENT_FAMILIES = ("suspense", "psychologie", "imaginaire", "histoire", "réel et idées")
 MOMENT_READERS = (4, 8)  # un livre « du moment » par famille, commencé cette semaine
 FIRST_MOMENTS = (MOMENT_FAMILIES[:3], (4, 6))  # réglages de la première vague
+MOMENT_PICKS = {"réel et idées": ("Reflets dans un oeil d'homme", "Nancy Huston")}  # imposés
 MOMENT_MIN_DESCRIPTION = 500
 MOMENT_BANNED = ("œuvre", "oeuvre", "création", "roman de", "étude")  # études littéraires
 MIN_FINISHED = 1       # chaque persona a terminé au moins un livre (lecteur contributeur)
@@ -275,7 +276,9 @@ def plan_readings(personas, books, rng, shared=SHARED, moments=FIRST_MOMENTS, be
                 p["moment"].append(book)
                 p["used"].add(book["id"])
             continue
-        for book in (b for b in ranked if FAMILY_OF[b["main_category"]] == family):
+        # Livre imposé (s'il est au catalogue et non masqué), sinon choix automatique.
+        picked = [b for b in books if (b["title"], *b["authors"][:1]) == MOMENT_PICKS.get(family)]
+        for book in picked + [b for b in ranked if FAMILY_OF[b["main_category"]] == family]:
             candidates = candidates_for(book)
             k = rng.randint(*readers)
             if len(candidates) < k:

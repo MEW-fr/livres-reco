@@ -448,37 +448,42 @@ def recommend(profile, n=5, filters=None, read_ids=(), group_pop=None, db_path=D
 
 # --- Évolution après une note ---------------------------------------------------------------
 
-def adjust(prefs, initial, key, delta):
-    """Ajoute delta à prefs[key], borné à [initial − 0,30 ; initial + 0,30] et ≥ 0."""
-    if delta < 0 and key not in prefs:
-        return
-    start = initial.get(key, 0.0)
-    value = prefs.get(key, 0.0) + delta
-    value = min(start + RATING_CAP, max(start - RATING_CAP, 0.0, value))
-    prefs[key] = round(value, 4)
+def learned(initial, deltas):
+    """Valeurs initiales + somme des écarts, bornées une seule fois à
+    [initial − 0,30 ; initial + 0,30] et ≥ 0. Une clé absente au départ n'est créée que
+    si son total est positif."""
+    prefs = dict(initial)
+    for key, total in deltas.items():
+        start = initial.get(key, 0.0)
+        value = round(min(start + RATING_CAP, max(start - RATING_CAP, 0.0, start + total)), 4)
+        if key in initial or value > 0:
+            prefs[key] = value
+    return prefs
 
 
 def recompute_learned(profile, rated_books):
     """Recalcule genres, thèmes et ambiances depuis les valeurs initiales et toutes les
     notes : rated_books = [(livre, note)]. Note 4-5 : +0,05 sur les genres, thèmes et
-    ambiance du livre ; 1-2 : −0,05 ; 3 : rien. Modifier une note ne cumule donc jamais.
+    ambiance du livre ; 1-2 : −0,05 ; 3 : rien. Les écarts sont d'abord additionnés, puis
+    bornés : le résultat ne dépend pas de l'ordre des notes, et modifier une note ne
+    cumule jamais.
 
     Les valeurs apprises sont conservées, mais une dimension neutre au questionnaire
     reste exclue de P (profile["answered"]).
     """
-    initial = profile["initial"]
-    for dim in ("genres", "themes", "ambiances"):
-        profile[dim] = copy.deepcopy(initial[dim])
+    deltas = {"genres": Counter(), "themes": Counter(), "ambiances": Counter()}
     for book, rating in rated_books:
         if 2 < rating < 4:
             continue
         delta = RATING_STEP if rating >= 4 else -RATING_STEP
         for key in book_categories(book):
-            adjust(profile["genres"], initial["genres"], key, delta)
+            deltas["genres"][key] += delta
         for key in book["themes"]:
-            adjust(profile["themes"], initial["themes"], key, delta)
+            deltas["themes"][key] += delta
         if book["ambiance"]:
-            adjust(profile["ambiances"], initial["ambiances"], book["ambiance"], delta)
+            deltas["ambiances"][book["ambiance"]] += delta
+    for dim, totals in deltas.items():
+        profile[dim] = learned(profile["initial"][dim], totals)
     return profile
 
 
