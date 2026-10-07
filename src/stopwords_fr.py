@@ -53,4 +53,5 @@ STOPWORDS_FR = [
     "auteur", "auteurs", "tome", "tomes", "prix", "best", "seller", "succès",
     "lecteur", "lecteurs", "page", "pages", "œuvre", "oeuvre", "publié",
     "publiée", "édition", "éditions", "ouvrage", "volume", "chapitre",
+    "dernières", "derniers", "années", "grands", "nouveaux", "nouvelle",
 ]

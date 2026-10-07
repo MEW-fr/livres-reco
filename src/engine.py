@@ -309,9 +309,12 @@ def novelty(centroid_vec, candidate_ids, db_path=DB_PATH):
 # --- CLI -------------------------------------------------------------------------------
 
 def find_book(index, query):
-    """Livres dont le titre contient la requête (sans accents ni casse)."""
+    """Livres dont le titre, sinon un auteur, contient la requête (sans accents ni casse)."""
     q = normalize(query)
-    return [b for b in index.books if q in normalize(b["title"])]
+    by_title = [b for b in index.books if q in normalize(b["title"])]
+    by_author = [b for b in index.books if b not in by_title
+                 and any(q in normalize(a) for a in b["authors"])]
+    return by_title + by_author
 
 
 def main(argv):
@@ -329,7 +332,7 @@ def main(argv):
     source = matches[0]
     if len(matches) > 1:
         print(f"{len(matches)} livres correspondent, premier retenu. Autres : "
-              + " ; ".join(b["title"] for b in matches[1:6]))
+              + " ; ".join(f"{b['title']} ({', '.join(b['authors'])})" for b in matches[1:6]))
 
     start = time.perf_counter()
     results = similar_books(source["id"])

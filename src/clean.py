@@ -50,6 +50,13 @@ LONG_TITLE_CHARS = 30  # au-delà, ce qui suit " : " ou " - " est un sous-titre,
 # Mentions d'éditeur glissées parmi les auteurs (comparées en mots entiers, sans accents).
 PUBLISHER_AUTHOR_RE = re.compile(r"\b(ligaran|editions?|collectif)\b")
 
+# Texte d'éditeur : phrase de plus de 80 car. présente à l'identique dans au moins
+# 3 livres distincts (plusieurs éditions d'un même livre ne comptent qu'une fois).
+BOILERPLATE_MIN_CHARS = 80
+BOILERPLATE_MIN_BOOKS = 3
+# Coupe après . ! ? … éventuellement suivis d'un guillemet fermant.
+SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+|(?<=[.!?…][\"»”])\s+")
+
 CATEGORY_ORDER = list(QUERIES)  # départage ultime, pour un résultat déterministe
 
 
@@ -135,6 +142,34 @@ def group_by_id(items):
         else:
             books[entry["google_id"]] = entry
     return list(books.values())
+
+
+# --- Étape 2 : texte d'éditeur -----------------------------------------------
+
+def strip_boilerplate(books):
+    """Retire des descriptions les phrases répétées dans plusieurs livres
+    (présentation de l'éditeur, de la collection…).
+
+    Renvoie (nb de phrases distinctes retirées, nb de descriptions modifiées).
+    """
+    owners = {}  # phrase -> clés (titre, auteur) des livres qui la contiennent
+    for book in books:
+        info = book["info"]
+        key = (dedupe_title(info.get("title") or ""),
+               normalize_text((info.get("authors") or [""])[0]))
+        for sentence in SENTENCE_SPLIT_RE.split(book["description"]):
+            if len(sentence) > BOILERPLATE_MIN_CHARS:
+                owners.setdefault(sentence, set()).add(key)
+    boilerplate = {s for s, keys in owners.items() if len(keys) >= BOILERPLATE_MIN_BOOKS}
+
+    modified = 0
+    for book in books:
+        sentences = SENTENCE_SPLIT_RE.split(book["description"])
+        kept = [s for s in sentences if s not in boilerplate]
+        if len(kept) < len(sentences):
+            book["description"] = " ".join(kept)
+            modified += 1
+    return len(boilerplate), modified
 
 
 # --- Étape 3 : filtres --------------------------------------------------------
@@ -277,6 +312,7 @@ def run(raw_dir=RAW_DIR, db_path=DB_PATH):
     items = load_raw(raw_dir)
     books = group_by_id(items)
     report = {"raw": len(items), "distinct": len(books)}
+    report["boilerplate"] = strip_boilerplate(books)
     books, report["rejects"] = apply_filters(books)
     before = len(books)
     books = dedupe(books)
@@ -292,6 +328,8 @@ def print_report(report):
     rows = report["rows"]
     print(f"Items bruts            : {report['raw']}")
     print(f"Livres distincts (id)  : {report['distinct']}")
+    sentences, descriptions = report["boilerplate"]
+    print(f"Texte d'éditeur        : {sentences} phrases retirées de {descriptions} descriptions")
     print("Rejets par filtre :")
     for name, count in report["rejects"].items():
         print(f"  - {name:<36} {count:>5}")
