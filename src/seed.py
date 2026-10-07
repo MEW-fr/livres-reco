@@ -6,6 +6,9 @@ Ils peuplent les sections communautaires de l'accueil (« Les lecteurs comme toi
 Usage :
   python -m src.seed           crée les comptes (refuse si des comptes démo existent déjà)
   python -m src.seed --reset   supprime les comptes démo et leurs données, puis recrée tout
+  python -m src.seed --historique <pseudo> [--force]
+                               historique de lecture cohérent pour un vrai compte (voir
+                               history) ; refuse si le compte a déjà des lectures, sauf --force
 
 Chaque persona (e-mail <pseudo>@exemple.fr, mot de passe commun « demo1234 ») répond au
 questionnaire, puis suit des livres tirés de ses recommandations (plus 1 ou 2 hors profil).
@@ -19,16 +22,18 @@ rejoint les livres du moment et ajoute ceux des familles histoire et réel et id
 import json
 import random
 import sys
+import zlib
 from collections import Counter
 from datetime import date, datetime, time, timedelta
 
 from werkzeug.security import generate_password_hash
 
-from app.filters import from_answers
+from app.filters import DEFAULTS, from_answers, to_engine
 from src import db, engine, home
 from src.db import DB_PATH
 from src.engine import book_categories
-from src.profile import ECLECTIC, FAMILIES, FAMILY_OF, build_profile, recommend, recompute_learned
+from src.profile import (ECLECTIC, FAMILIES, FAMILY_OF, build_profile, recommend,
+                         recompute_learned, save_learned, score_book)
 from src.questions import NEUTRAL
 
 SEED = 2026
@@ -154,6 +159,15 @@ PERSONAS = [
     ("anais", [N], ["amour"], [N], N, N, ["fantasy"], N, N, 6),
     ("paul", [N], [N], [N], "long", N, [N], "nouveau", N, 7),
 ]
+
+# --historique : 10 terminés sur 6 mois, 2 en cours cette semaine, 3 dans la pile.
+HISTORY_FINISHED = 10
+HISTORY_SHARED = 2        # terminés aussi par d'autres lecteurs de sa famille
+HISTORY_OUTSIDE = 1       # livre hors profil parmi les terminés
+HISTORY_READING = 2       # dont le livre du moment de sa famille
+HISTORY_PILE = 3
+HISTORY_MONTHS_DAYS = 182
+HISTORY_RATINGS = (0.7, 0.2)  # parts à 4-5 et à 3 ; le reste à 1-2
 
 COMMENTS = {
     "high": [
@@ -510,9 +524,154 @@ def print_report(result, out=print):
             out(f"    du moment : {data['moment'][0]} ({data['moment'][1]} lecteurs)")
 
 
+# --- Historique d'un vrai compte ---------------------------------------------------------
+
+def history_rng(pseudo):
+    """Graine fixe dérivée du pseudo (crc32 : stable d'une exécution à l'autre)."""
+    return random.Random(SEED + zlib.crc32(pseudo.lower().encode()))
+
+
+def family_moment(user, today, db_path=DB_PATH):
+    """Livre « du moment » de la famille : le plus commencé cette semaine (et pas encore
+    terminé) par les autres lecteurs de même famille, ou None."""
+    span = (days_ago(today, home.WEEK_DAYS - 1).isoformat(), today.isoformat())
+    with db.get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT r.book_id FROM readings r JOIN users u ON u.id = r.user_id"
+            " WHERE u.profile_family = ? AND u.id != ? AND r.end_date IS NULL"
+            " AND r.start_date BETWEEN ? AND ?"
+            " GROUP BY r.book_id ORDER BY COUNT(DISTINCT r.user_id) DESC, r.book_id LIMIT 1",
+            (user["profile_family"], user["id"], *span)).fetchone()
+    index = engine.get_index(db_path)
+    return index.books[index.row_of[row["book_id"]]] if row and row["book_id"] in index.row_of \
+        else None
+
+
+def history_ratings(n, rng):
+    """n notes : 70 % à 4-5, 20 % à 3, 10 % à 1-2 (arrondis), de la meilleure à la pire."""
+    high, mid = round(HISTORY_RATINGS[0] * n), round(HISTORY_RATINGS[1] * n)
+    return ([rng.choice((4, 5)) for _ in range(high)] + [3] * mid
+            + [rng.choice((1, 2)) for _ in range(n - high - mid)])
+
+
+def plan_history(user, profile, today, rng, db_path=DB_PATH):
+    """Lectures d'un vrai compte : [{book, rank, start, end, added, rating, comment}].
+
+    Terminés : HISTORY_SHARED livres terminés par d'autres lecteurs de sa famille, un livre
+    hors profil, le reste dans ses recommandations ; notés du mieux au moins bien classé par
+    le barème (le hors profil a donc la moins bonne note). En cours : le livre du moment de
+    sa famille et une recommandation, commencés cette semaine. Pile : 3 recommandations.
+    """
+    index = engine.get_index(db_path)
+    saved = db.get_filters(user["id"], db_path) or from_answers(db.load_answers(user["id"],
+                                                                              db_path))
+    pool = [r["book"] for r in recommend(profile, POOL, to_engine(dict(DEFAULTS, **saved)),
+                                         db_path=db_path, max_per_category=None)]
+    allowed = [b for b in index.books if not excludes(profile, b)]
+    used = set()
+
+    def take(books, k):
+        chosen = [b for b in books if b["id"] not in used][:k]
+        used.update(b["id"] for b in chosen)
+        return chosen
+
+    moment = take([b for b in [family_moment(user, today, db_path)]
+                   if b and not excludes(profile, b)], 1)
+    shared = take([e["book"] for e in home.lecteurs_comme_toi(user, db_path)["books"]
+                   if not excludes(profile, e["book"])], HISTORY_SHARED)
+    pool_ids = {b["id"] for b in pool}
+    outside = take(rng.sample([b for b in allowed if b["id"] not in pool_ids], 20),
+                   HISTORY_OUTSIDE)
+    finished = shared + outside + take(pool, HISTORY_FINISHED - len(shared) - len(outside))
+    reading = moment + take(pool, HISTORY_READING - len(moment))
+    pile = take(pool, HISTORY_PILE)
+    if len(finished) + len(reading) + len(pile) < HISTORY_FINISHED + HISTORY_READING \
+            + HISTORY_PILE:
+        raise SeedError("Pas assez de livres recommandés pour ce profil avec ses filtres.")
+
+    # Terminés répartis sur 6 mois : un créneau par livre, du plus ancien au plus récent.
+    slot = (HISTORY_MONTHS_DAYS - FINISHED_SPAN[0]) // len(finished)
+    rng.shuffle(finished)
+    rows = []
+    for i, book in enumerate(finished):
+        oldest = HISTORY_MONTHS_DAYS - i * slot
+        start = days_ago(today, rng.randint(oldest - slot + 1, oldest))
+        span = rng.randint(FINISHED_SPAN[0], min(FINISHED_SPAN[1], (today - start).days))
+        rows.append({"book": book, "rank": None, "start": start,
+                     "end": start + timedelta(days=span)})
+    year = today.year
+    by_score = sorted(rows, key=lambda r: -score_book(profile, r["book"], 50.0, None, year)[0])
+    for r, rating in zip(by_score, history_ratings(len(by_score), rng)):
+        r["rating"] = rating
+    for r in rng.sample(rows, len(rows) // 2):
+        r["comment"] = comment_for(r["rating"], rng)
+    for book in reading:
+        rows.append({"book": book, "rank": None, "end": None,
+                     "start": days_ago(today, rng.randint(0, home.WEEK_DAYS - 1))})
+    for rank, book in enumerate(pile, 1):
+        rows.append({"book": book, "rank": rank, "start": None, "end": None,
+                     "added": days_ago(today, rng.randint(1, 60))})
+    for r in rows:
+        r.setdefault("added", r["start"])
+        r.setdefault("rating", None)
+        r.setdefault("comment", None)
+    return {"rows": rows, "shared": shared, "moment": moment[0] if moment else None}
+
+
+def history(pseudo, db_path=DB_PATH, force=False, today=None, out=print):
+    """Historique de lecture cohérent avec le profil d'un vrai compte (non démo), puis
+    recalcul des tendances observées (save_learned). Refuse si le compte a déjà des
+    lectures, sauf force (elles sont alors remplacées). Graine dérivée du pseudo."""
+    today = today or date.today()
+    user = db.find_user(pseudo, db_path)
+    if user is None or user["username"].lower() != pseudo.lower():
+        raise SeedError(f"Aucun compte au pseudo « {pseudo} ».")
+    if user["is_demo"]:
+        raise SeedError(f"« {pseudo} » est un compte de démonstration.")
+    profile = db.load_profile(user["id"], db_path)
+    if profile is None:
+        raise SeedError(f"« {pseudo} » n'a pas encore rempli le questionnaire.")
+    existing = db.list_readings(user["id"], db_path=db_path)
+    if existing and not force:
+        raise SeedError(f"« {pseudo} » a déjà {len(existing)} lecture(s) : relance avec --force "
+                        "pour les remplacer.")
+
+    rng = history_rng(pseudo)
+    plan = plan_history(user, profile, today, rng, db_path)
+    with db.get_connection(db_path) as conn:
+        conn.execute("DELETE FROM readings WHERE user_id = ?", (user["id"],))
+        for r in plan["rows"]:
+            last = r["end"] or r["start"] or r["added"]
+            conn.execute(
+                "INSERT INTO readings (user_id, book_id, rank, start_date, end_date, rating,"
+                " comment, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (user["id"], r["book"]["id"], r["rank"], r["start"] and r["start"].isoformat(),
+                 r["end"] and r["end"].isoformat(), r["rating"], r["comment"],
+                 stamp(r["added"], rng), stamp(last, rng)))
+    save_learned(user["id"], profile, db_path)
+
+    statuses = Counter(db.reading_status(r) for r in db.list_readings(user["id"],
+                                                                       db_path=db_path))
+    out(f"Historique de {user['username']} ({user['profile_family']}) : "
+        + ", ".join(f"{statuses[s]} {s}" for s in (db.FINISHED, db.READING, db.TO_READ)))
+    out("  partagés avec sa famille : "
+        + (" ; ".join(b["title"] for b in plan["shared"]) or "aucun"))
+    out(f"  du moment : {plan['moment']['title'] if plan['moment'] else 'aucun'}")
+    if existing:
+        out(f"  {len(existing)} lecture(s) précédente(s) remplacée(s) (--force)")
+    return plan
+
+
 def main(argv):
+    if argv[:1] == ["--historique"] and len(argv) in (2, 3) and argv[2:] in ([], ["--force"]):
+        try:
+            history(argv[1], force=argv[2:] == ["--force"])
+        except SeedError as error:
+            print(error)
+            return 1
+        return 0
     if argv not in ([], ["--reset"]):
-        print("Usage : python -m src.seed [--reset]")
+        print("Usage : python -m src.seed [--reset | --historique <pseudo> [--force]]")
         return 1
     try:
         run(reset=argv == ["--reset"])

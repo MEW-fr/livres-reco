@@ -327,7 +327,7 @@ def novelty(centroid_vec, candidate_ids, db_path=DB_PATH):
 APOSTROPHES = str.maketrans("’‘´", "'''")
 MIN_EXACT = 5           # en dessous, la recherche complète par des résultats approchés
 FUZZY_RATIO = 0.8       # difflib.SequenceMatcher : ressemblance minimale de la chaîne entière
-FUZZY_MIN_WORD = 4      # mots plus courts : correspondance exacte exigée
+FUZZY_MIN_WORD = 5      # mots plus courts : correspondance exacte exigée (hugo ≠ hugh)
 
 
 def search_text(text):

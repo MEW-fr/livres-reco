@@ -1,6 +1,6 @@
 # Évaluation du MVP
 
-_Rapport généré le 7 octobre 2026 à 15:46 par `python -m src.evaluate`, sur `data/books.db`._
+_Rapport généré le 7 octobre 2026 à 15:51 par `python -m src.evaluate`, sur `data/books.db`._
 
 ## Synthèse
 
@@ -10,7 +10,7 @@ _Rapport généré le 7 octobre 2026 à 15:46 par `python -m src.evaluate`, sur 
 | Recherche : livre visé dans le top 5 pour ≥ 15/20 | 20/20 | ✅ atteint (objectif ≥ 18 atteint) |
 | Livres proches : 5 résultats distincts expliqués | 0 échec(s) sur 30 | ✅ atteint |
 | « Choisis pour toi » : 5 résultats expliqués | 0 échec(s) sur 46 profils | ✅ atteint |
-| Temps de réponse < 3 s (objectif CDC < 1 s) | p95 max 33 ms, 0 erreur(s) | ✅ atteint (objectif < 1 s atteint) |
+| Temps de réponse < 3 s (objectif CDC < 1 s) | p95 max 34 ms, 0 erreur(s) | ✅ atteint (objectif < 1 s atteint) |
 | Cohérence humaine ≥ 3/5 par profil | 8 profils à juger | ⏳ à remplir (docs/evaluation_humaine.md) |
 | Diversité (indicatif) | 49 % de catégories distinctes en moyenne (avant contrainte : 36 %), 0 livre(s) passe-partout | ℹ️ sans seuil |
 
@@ -108,8 +108,8 @@ Client de test Flask sur `data/books.db`, connecté avec un profil de démo ; 50
 | Page | Médiane | p95 | Erreurs | Verdict |
 |---|---|---|---|---|
 | /accueil | 7 ms | 21 ms | 0 | ✅ < 1 s |
-| /recherche?q=… | 22 ms | 33 ms | 0 | ✅ < 1 s |
-| /livre/<id> | 3 ms | 3 ms | 0 | ✅ < 1 s |
+| /recherche?q=… | 23 ms | 34 ms | 0 | ✅ < 1 s |
+| /livre/<id> | 3 ms | 4 ms | 0 | ✅ < 1 s |
 | /explorer | 5 ms | 5 ms | 0 | ✅ < 1 s |
 
 ## 5. Cohérence humaine

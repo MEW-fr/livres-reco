@@ -189,3 +189,73 @@ def test_bandeau_compte_de_demonstration(path):
     client = create_app({"TESTING": True, "SECRET_KEY": "test", "DB_PATH": path}).test_client()
     login(client, db.find_user("aline", path)["id"])
     assert "Compte de démonstration" in client.get("/profil").get_data(as_text=True)
+
+
+# --- Historique d'un vrai compte (--historique) ----------------------------------------------
+
+def real_user(path, pseudo="mathilde"):
+    """Vrai compte (non démo) au profil suspense, questionnaire rempli."""
+    answers = seed.answers_of(seed.PERSONAS[0])
+    user_id = db.create_user(pseudo, f"{pseudo}@example.com", "x", path)
+    for qid, answer in answers.items():
+        db.save_answer(user_id, qid, answer, path)
+    db.save_profile(user_id, build_profile(answers), path)
+    return user_id
+
+
+def test_historique_coherent(path):
+    seed.run(path, today=TODAY, out=quiet)
+    me = real_user(path)
+    plan = seed.history("Mathilde", path, today=TODAY, out=quiet)
+    rows = db.list_readings(me, db_path=path)
+    by_status = {s: [r for r in rows if db.reading_status(r) == s]
+                 for s in (db.FINISHED, db.READING, db.TO_READ)}
+    finished = by_status[db.FINISHED]
+    assert [len(by_status[s]) for s in by_status] == [10, 2, 3]
+    assert len({r["book_id"] for r in rows}) == 15
+
+    # Terminés sur les 6 derniers mois, 5 à 30 jours chacun, répartis (un par créneau).
+    starts = sorted(date.fromisoformat(r["start_date"]) for r in finished)
+    assert TODAY - timedelta(days=seed.HISTORY_MONTHS_DAYS) <= starts[0]
+    assert (starts[-1] - starts[0]).days >= 120
+    for r in finished:
+        span = (date.fromisoformat(r["end_date"]) - date.fromisoformat(r["start_date"])).days
+        assert 5 <= span <= 30 and date.fromisoformat(r["end_date"]) <= TODAY
+    ratings = Counter("haut" if r["rating"] >= 4 else "moyen" if r["rating"] == 3 else "bas"
+                      for r in finished)
+    assert ratings == {"haut": 7, "moyen": 2, "bas": 1}
+    assert sum(r["comment"] is not None for r in finished) == 5
+
+    # Au moins 2 livres terminés aussi par sa famille ; livre du moment en cours.
+    family = {r["book_id"] for r in demo_readings(path) if r["end_date"]
+              and db.find_user(r["username"], path)["profile_family"] == "suspense"}
+    assert len({r["book_id"] for r in finished} & family) >= 2
+    reading = by_status[db.READING]
+    assert plan["moment"] and plan["moment"]["id"] in {r["book_id"] for r in reading}
+    week_start = TODAY - timedelta(days=6)
+    assert all(week_start <= date.fromisoformat(r["start_date"]) <= TODAY for r in reading)
+    assert sorted(r["rank"] for r in by_status[db.TO_READ]) == [1, 2, 3]
+
+    # Tendances recalculées depuis les notes.
+    profile = db.load_profile(me, path)
+    assert profile["genres"] != profile["initial"]["genres"]
+
+
+def test_historique_refus_et_force(path):
+    seed.run(path, today=TODAY, out=quiet)
+    me = real_user(path)
+    with pytest.raises(seed.SeedError, match="démonstration"):
+        seed.history("aline", path, today=TODAY, out=quiet)
+    with pytest.raises(seed.SeedError, match="Aucun compte"):
+        seed.history("personne", path, today=TODAY, out=quiet)
+
+    def readings():
+        keep = ("book_id", "rank", "start_date", "end_date", "rating", "comment")
+        return sorted(tuple(r[k] for k in keep) for r in db.list_readings(me, db_path=path))
+
+    seed.history("mathilde", path, today=TODAY, out=quiet)
+    first = readings()
+    with pytest.raises(seed.SeedError, match="--force"):
+        seed.history("mathilde", path, today=TODAY, out=quiet)
+    seed.history("mathilde", path, force=True, today=TODAY, out=quiet)
+    assert readings() == first  # même graine (dérivée du pseudo) : même historique

@@ -1,6 +1,6 @@
 # Évaluation humaine des recommandations
 
-_Grille générée le 7 octobre 2026 à 15:34 par `python -m src.evaluate`._
+_Grille générée le 7 octobre 2026 à 15:51 par `python -m src.evaluate`._
 
 Pour chaque profil, chaque membre du groupe lit les réponses puis juge si chacune des 5 recommandations « Choisis pour toi » est cohérente (oui/non). Critère : au moins 3/5 jugées cohérentes par profil.
 
@@ -18,8 +18,8 @@ Pour chaque profil, chaque membre du groupe lit les réponses puis juge si chacu
 | 1 | Les Ravenel (Tome 6) - Ma très chère Cassandra — Lisa Kleypas | Romance | Recommandé pour le genre Romance et le thème amour, et pour te faire découvrir un univers un peu différent. |  |
 | 2 | Supplices — Sophie Jordan | Romance | Recommandé pour le genre Romance et le thème amour, et pour te faire découvrir un univers un peu différent. |  |
 | 3 | Sulfureuse compromission (Tomes 1 & 2) — Beth Kery | Romance | Recommandé pour le genre Romance et le thème amour, et pour te faire découvrir un univers un peu différent. |  |
-| 4 | Les frères Clayborne — Julie Garwood | Romance | Recommandé pour le genre Romance et le thème famille, et pour te faire découvrir un univers un peu différent. |  |
-| 5 | Affaires privées (Tome 4) - Pour un soir — Molly O'Keefe | Romance | Recommandé pour le genre Romance et le thème famille, et pour te faire découvrir un univers un peu différent. |  |
+| 4 | Monsieur des Lourdines — Alphonse de Châteaubriant | Littérature | Recommandé pour le genre Littérature, le thème famille et son ambiance intimiste, et pour te faire découvrir un univers un peu différent. |  |
+| 5 | Comme une famille - La saga des Diangello — Rachel Corenblit | Littérature | Recommandé pour le genre Littérature, les thèmes famille et amour et son ambiance intimiste, et pour te faire découvrir un univers un peu différent. |  |
 
 Score : ___ / 5
 
@@ -37,8 +37,8 @@ Score : ___ / 5
 | 1 | L'Illusion — Maxime Chattam | Thriller | Recommandé pour le genre Thriller, le thème secret et son ambiance sombre, et pour te faire découvrir un univers un peu différent. |  |
 | 2 | De retour à la maison (Un mystère suspense psychologique Chloé Fine – Volume 5) — Blake Pierce | Thriller | Recommandé pour le genre Thriller, le thème secret et son ambiance tendue, et pour te faire découvrir un univers un peu différent. |  |
 | 3 | Le tueur au miroir — Fabio M. Mitchelli | Thriller | Recommandé pour le genre Thriller, les thèmes crime et secret et son ambiance tendue, et pour te faire découvrir un univers un peu différent. |  |
-| 4 | Son autre vérité (Un thriller psychologique Stella Fall – Livre 6) — Ava Strong | Thriller | Recommandé pour le genre Thriller, les thèmes secret et crime et son ambiance tendue, et pour te faire découvrir un univers un peu différent. |  |
-| 5 | Tueuses en série — Frédérique Volot | Thriller | Recommandé pour le genre Thriller, le thème crime et son ambiance sombre, et pour te faire découvrir un univers un peu différent. |  |
+| 4 | Complot en Cap-Sizun — Pierre Engélibert | Polar | Recommandé pour le genre Polar et les thèmes crime et secret, et pour te faire découvrir un univers un peu différent. |  |
+| 5 | Un lieu ensorcelé: Meurtre par manuscrit (Curieuse Librairie Polar Cozy – Tome 2) — Sophie Love | Polar | Recommandé pour le genre Polar et les thèmes secret et crime, et pour te faire découvrir un univers un peu différent. |  |
 
 Score : ___ / 5
 
@@ -56,8 +56,8 @@ Score : ___ / 5
 | 1 | Ce qui ne me tue pas — David Lagercrantz | Science-fiction | Recommandé pour le genre Science-fiction et le thème science, et pour te faire découvrir un univers un peu différent. |  |
 | 2 | IA 2042 - Dix scénarios pour notre futur — Chen Qiufan, Kai-Fu Lee | Science-fiction | Recommandé pour le genre Science-fiction et le thème science, et pour te faire découvrir un univers un peu différent. |  |
 | 3 | Le Samouraï virtuel — Neal Stephenson | Science-fiction | Recommandé pour le genre Science-fiction et le thème science, et pour te faire découvrir un univers un peu différent. |  |
-| 4 | L'Arithmétique terrible de la misère — Catherine Dufour | Science-fiction | Recommandé pour le genre Science-fiction et le thème science, et pour te faire découvrir un univers un peu différent. |  |
-| 5 | Destination Outreterres — Robert Heinlein | Science-fiction | Recommandé pour le genre Science-fiction et les thèmes science et survie, et pour te faire découvrir un univers un peu différent. |  |
+| 4 | Avatar — STEYER J | Dystopie | Recommandé pour le genre Dystopie et le thème science, et pour te faire découvrir un univers un peu différent. |  |
+| 5 | Sortir de la brume — Sylvain Namur | Dystopie | Recommandé pour le genre Dystopie, et pour te faire découvrir un univers un peu différent. |  |
 
 Score : ___ / 5
 
@@ -113,8 +113,8 @@ Score : ___ / 5
 | 1 | BOURSES DE VOYAGE — Jules Verne | Aventure | Recommandé pour élargir tes horizons de lecture. |  |
 | 2 | Les jeux vidéo pour enfants — Maude Bonenfant, Simon Delorme, Alexandra Dumont, Cédric Duchaineau | Aventure | Recommandé pour élargir tes horizons de lecture. |  |
 | 3 | Mission en Indonésie — Équipe Cousteau, Thierry Piantanida, François Sarano | Aventure | Recommandé pour élargir tes horizons de lecture. |  |
-| 4 | Valery Larbaud et l'aventure de l'écriture — María Isabel Corbí Sáez | Aventure | Recommandé pour élargir tes horizons de lecture. |  |
-| 5 | Les Français et les vacances — Bertrand Réau | Aventure | Recommandé pour élargir tes horizons de lecture. |  |
+| 4 | La bibliothèque idéale — Bernard Pivot, Pierre Boncenne | Horreur | Recommandé pour élargir tes horizons de lecture. |  |
+| 5 | Le mystère de la chambre Jeanne Calment — Jean-Claude Lamy | Biographies & récits | Recommandé pour élargir tes horizons de lecture. |  |
 
 Score : ___ / 5
 
@@ -132,8 +132,8 @@ Score : ___ / 5
 | 1 | Marcel Bénabou — Hind Lahmami | Littérature | Recommandé pour le genre Littérature, et pour te faire découvrir un univers un peu différent. |  |
 | 2 | Pseudo — Romain Gary, Émile Ajar | Littérature | Recommandé pour le genre Littérature, et pour te faire découvrir un univers un peu différent. |  |
 | 3 | Claude Simon — Nathalie Piégay, Nathalie Piégay-Gros | Littérature | Recommandé pour le genre Littérature, et pour te faire découvrir un univers un peu différent. |  |
-| 4 | Filles de la Pluie — André Savignon | Littérature | Recommandé pour le genre Littérature, et pour te faire découvrir un univers un peu différent. |  |
-| 5 | Première ligne — Jean-Marie Laclavetine | Littérature | Recommandé pour le genre Littérature, et pour te faire découvrir un univers un peu différent. |  |
+| 4 | Silence, on ment — Géraldine Krieger | Thriller | Recommandé pour le thème secret et son ambiance intimiste, et pour te faire découvrir le genre Thriller. |  |
+| 5 | Maison hantée — Elias J. Connor | Horreur | Recommandé pour le thème secret et son ambiance sombre, et pour te faire découvrir le genre Horreur. |  |
 
 Score : ___ / 5
 
