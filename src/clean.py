@@ -13,6 +13,7 @@ from collections import Counter
 from pathlib import Path
 
 from src import tagging
+from src.stopwords_fr import STOPWORDS_FR
 from src.collect import QUERIES, RAW_DIR
 from src.db import DB_PATH, get_connection, init_db
 
@@ -35,12 +36,21 @@ NONFICTION_GOOGLE_CATEGORIES = {
     "music", "art", "performing arts", "biography & autobiography", "science",
     "political science", "business", "psychology", "self-help", "law", "medical",
     "technology", "travel", "cooking", "poetry", "drama", "comics",
+    "literary criticism & collections", "antiques & collectibles", "architecture",
+    "photography", "foreign language study", "games", "crafts & hobbies", "nature",
+    "pets", "sports & recreation", "transportation",
 }
 NONFICTION_TITLE_PATTERNS = [
     "dans le roman", "le roman de", "le roman au", "roman et", "litterature", "anthologies?",
     "etudes?", "histoire du", "histoire de la", "siecles?", r"\d{4} \d{4}",
+    "revue", "bulletin", "regards", "critiques?", "catalogue", "exposition", "actes",
+    "colloque", "cahiers", "special", "numero", "et son", "au cinema", "au theatre",
+    "fiction et",
 ]
 NONFICTION_TITLE_RE = re.compile(r"\b(" + "|".join(NONFICTION_TITLE_PATTERNS) + r")\b")
+
+# Contrôle de langue : part minimale de mots vides français dans la description.
+MIN_FRENCH_STOPWORD_RATIO = 0.08
 
 # Dédoublonnage secondaire : mots d'édition retirés du titre normalisé.
 EDITION_WORDS_RE = re.compile(
@@ -74,6 +84,15 @@ def normalize_text(text):
     text = (text or "").lower().replace("œ", "oe").replace("æ", "ae")
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
     return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+
+FRENCH_STOPWORDS = {normalize_text(w) for w in STOPWORDS_FR}
+
+
+def french_stopword_ratio(text):
+    """Part des mots du texte qui sont des mots vides français (0 si texte vide)."""
+    words = normalize_text(text).split()
+    return sum(w in FRENCH_STOPWORDS for w in words) / len(words) if words else 0.0
 
 
 def parse_year(published_date):
@@ -197,6 +216,8 @@ FILTERS = [
     ("langue != fr", lambda b: b["info"].get("language") == "fr"),
     ("titre ou auteurs manquants", lambda b: bool(b["info"].get("title")) and bool(b["info"].get("authors"))),
     (f"description < {MIN_DESCRIPTION_CHARS} car.", lambda b: len(b["description"]) >= MIN_DESCRIPTION_CHARS),
+    ("description non française",
+     lambda b: french_stopword_ratio(b["description"]) >= MIN_FRENCH_STOPWORD_RATIO),
     (f"pageCount absent ou hors [{MIN_PAGES}, {MAX_PAGES}]", lambda b: _has_valid_pages(b["info"])),
     ("année non parsable", lambda b: parse_year(b["info"].get("publishedDate")) is not None),
     ("titre exclu (coffret, guide…)", lambda b: not EXCLUDED_TITLE_RE.search(normalize_text(b["info"]["title"]))),
