@@ -3,17 +3,19 @@
 {% from "_macros.html" import logo %}
 {% block body_class %}page-app{% endblock %}
 {% block body %}
-<header class="topbar">
+<header class="topbar{% if query %} search-open{% endif %}">
   {{ logo() }}
-  <form class="search-bar" action="{{ url_for('books.recherche') }}" method="get" role="search">
+  <button class="icon-btn search-toggle" type="button" data-search-toggle
+          aria-controls="search-bar" aria-expanded="{{ 'true' if query else 'false' }}" aria-label="Rechercher"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg></button>
+  <form class="search-bar" id="search-bar" action="{{ url_for('books.recherche') }}" method="get" role="search">
     <span class="search-icon" aria-hidden="true">⌕</span>
     <input type="search" name="q" value="{{ query or '' }}" placeholder="Titre, auteur…"
            aria-label="Rechercher un titre ou un auteur" minlength="2">
   </form>
   <div class="topbar-right">
     <button class="btn btn-lime btn-small" type="button" data-filters-open
-            aria-controls="filters-panel" aria-expanded="false">≡ Filtres</button>
-    <a class="btn btn-ghost btn-small" href="{{ url_for('auth.deconnexion') }}">Se déconnecter</a>
+            aria-controls="filters-panel" aria-expanded="false" aria-label="Filtres">≡<span class="btn-label"> Filtres</span></button>
+    <a class="btn btn-ghost btn-small desktop-only" href="{{ url_for('auth.deconnexion') }}">Se déconnecter</a>
     <span class="avatar" title="{{ g.user.username }}">{{ g.user.username[0]|upper }}</span>
   </div>
 </header>
@@ -47,8 +49,17 @@
     {% endfor %}
     {% endwith %}
     {% block content %}{% endblock %}
+    <p class="mobile-only logout-mobile"><a class="btn btn-ghost btn-small" href="{{ url_for('auth.deconnexion') }}">Se déconnecter</a></p>
   </main>
 </div>
+
+{# Mobile (< 768 px) : le menu latéral laisse place à cette barre fixe en bas. #}
+<nav class="bottom-nav" aria-label="Navigation principale">
+  <a class="bottom-item{% if active == 'accueil' %} active{% endif %}" href="{{ url_for('main.accueil') }}"><span aria-hidden="true">⌂</span>Accueil</a>
+  <a class="bottom-item{% if active == 'explorer' %} active{% endif %}" href="{{ url_for('main.explorer') }}"><span aria-hidden="true">✦</span>Explorer</a>
+  <a class="bottom-item{% if active == 'bibliotheque' %} active{% endif %}" href="{{ url_for('library.bibliotheque') }}"><span class="bottom-icon"><span aria-hidden="true">▤</span><span class="nav-badge">{{ library_count or 0 }}</span></span>Bibliothèque</a>
+  <a class="bottom-item{% if active == 'profil' %} active{% endif %}" href="{{ url_for('library.profil') }}"><span aria-hidden="true">◎</span>Profil</a>
+</nav>
 
 {% include "_filters_panel.html" %}
 {% endblock %}

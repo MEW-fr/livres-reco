@@ -30,3 +30,15 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 });
+
+// Mobile : l'icône loupe de l'en-tête déplie ou replie le champ de recherche.
+document.addEventListener("DOMContentLoaded", () => {
+  const button = document.querySelector("[data-search-toggle]");
+  if (!button) return;
+  const topbar = button.closest(".topbar");
+  button.addEventListener("click", () => {
+    const open = topbar.classList.toggle("search-open");
+    button.setAttribute("aria-expanded", String(open));
+    if (open) topbar.querySelector(".search-bar input").focus();
+  });
+});
