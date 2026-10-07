@@ -279,6 +279,12 @@ def test_negative_rating_does_not_create():
     ({"q1": ["aventure", "roman historique"]}, "Grandes épopées"),
     ({"q1": ["littérature générale", "romance"]}, "Émotions & liens"),
     ({"q1": ["policier", "romance"]}, "Fin limier"),
+    # Le libellé suit la famille dominante, pas l'ordre des paires.
+    ({"q1": ["romance", "litterature", "thriller_polar"]}, "Émotions & liens"),
+    ({"q1": ["thriller_polar", "litterature", "romance"]}, "Émotions & liens"),
+    ({"q1": ["essais", "thriller_polar", "romance", "biographies"]}, "Esprits curieux"),
+    ({"q1": ["romance", "science_fiction", "fantasy"]}, "Futurs possibles"),
+    ({"q1": ["dystopie", "horreur", "thriller"]}, "Veilleur·se lucide"),  # 1er genre de la famille
     ({"q1": ["neutre"], "q3": ["intimiste"]}, "Lecteur·rice sensible"),
     ({"q1": ["autre"], "q3": ["varie"]}, "Éclectique"),
     ({"q1": ["thriller_polar"]}, "Suspense & tension"),
@@ -311,6 +317,8 @@ def test_all_labels_complete():
     ({"q3": ["intimiste"]}, "psychologie"),
     ({"q1": ["romance", "thriller_polar", "histoire_aventure"]}, "éclectique"),  # 3 à égalité
     ({"q1": ["romance", "litterature", "essais"]}, "psychologie"),        # 2 contre 1
+    ({"q1": ["romance", "litterature", "thriller_polar"]}, "psychologie"),
+    ({"q1": ["essais", "thriller_polar"]}, "réel et idées"),      # égalité à 2 : premier coché
     ({"q1": ["autre"]}, "éclectique"),
 ])
 def test_family(given, family):

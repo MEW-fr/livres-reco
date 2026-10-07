@@ -150,27 +150,32 @@ ECLECTIC_LABEL = entry(
     ["Découverte", "Curiosité", "Ouverture", "Surprises"], ECLECTIC)
 
 
-def is_eclectic(q1_codes):
-    """Vrai si TIE_LIMIT familles ou plus sont à égalité en tête des choix de q1
-    (chaque groupe ou catégorie cochée compte pour une voix dans sa famille)."""
+def dominant_family(q1_codes):
+    """Famille ayant le plus de voix dans q1 (chaque groupe ou catégorie cochée = une voix).
+
+    ECLECTIC si TIE_LIMIT familles ou plus sont à égalité en tête ; à égalité entre deux
+    familles, celle cochée en premier. None si aucun genre n'est coché.
+    """
     votes = Counter(FAMILY_OF[GROUPS[c][1][0] if c in GROUPS else c] for c in q1_codes)
     if not votes:
-        return False
+        return None
     top = max(votes.values())
-    return sum(1 for v in votes.values() if v == top) >= TIE_LIMIT
+    leaders = [f for f, v in votes.items() if v == top]  # dans l'ordre des choix
+    return ECLECTIC if len(leaders) >= TIE_LIMIT else leaders[0]
 
 
-def choose_label(genres, ambiances, q1_codes=()):
-    """Éclectique si 3 familles ou plus à égalité, sinon paire si ses deux genres sont
-    choisis, sinon premier genre, sinon ambiance dominante, sinon éclectique.
-    La famille du profil est celle du libellé retenu."""
-    if is_eclectic(q1_codes):
+def choose_label(genres, ambiances, q1_codes):
+    """Le libellé suit la famille dominante : première paire complète de cette famille,
+    sinon premier genre coché de la famille. Sans genre : ambiance dominante, sinon
+    éclectique."""
+    family = dominant_family(q1_codes)
+    if family == ECLECTIC:
         return ECLECTIC_LABEL
-    for pair, label in PAIR_LABELS:
-        if all(g in genres for g in pair):
-            return label
-    if genres:
-        return GENRE_LABELS[next(iter(genres))]
+    if family:
+        for pair, label in PAIR_LABELS:
+            if label["family"] == family and all(g in genres for g in pair):
+                return label
+        return next(GENRE_LABELS[g] for g in genres if FAMILY_OF[g] == family)
     if ambiances:
         return AMBIANCE_PROFILE_LABELS[max(ambiances, key=ambiances.get)]
     return ECLECTIC_LABEL
