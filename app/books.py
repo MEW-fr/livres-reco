@@ -19,11 +19,16 @@ GROUP_OF = {cat: label for label, cats in GROUPS.values() for cat in cats}
 
 
 def get_book(book_id):
-    """Livre du catalogue (champs JSON décodés), ou 404."""
+    """Livre du catalogue (champs JSON décodés), ou 404. Un livre masqué (src.hide) reste
+    accessible à qui le suit déjà dans sa bibliothèque."""
     index = engine.get_index(db_path())
-    if book_id not in index.row_of:
-        abort(404)
-    return index.books[index.row_of[book_id]]
+    if book_id in index.row_of:
+        return index.books[index.row_of[book_id]]
+    if db.get_reading(g.user["id"], book_id, db_path()):
+        book = engine.load_book(book_id, db_path())
+        if book:
+            return book
+    abort(404)
 
 
 # --- Recherche ---------------------------------------------------------------------------
@@ -70,7 +75,9 @@ def fiche(book_id):
     book = get_book(book_id)
     query = request.args.get("q", "").strip()
     source = request.args.get("from")
-    if source in home.SOURCES:
+    if book["hidden"]:  # hors index : ni explication ni livres similaires
+        reason = None
+    elif source in home.SOURCES:
         reason = home.reason(g.user, book, source, db_path=db_path())
     elif query:
         reason = f"Correspond à ta recherche « {query} »."
@@ -78,7 +85,8 @@ def fiche(book_id):
         reason = None
 
     filters = user_filters.to_engine(user_filters.load(g.user["id"]))
-    similar = engine.similar_books(book_id, 5, filters=filters, db_path=db_path())
+    similar = ([] if book["hidden"] else
+               engine.similar_books(book_id, 5, filters=filters, db_path=db_path()))
 
     return render_template(
         "books/fiche.html", book=book, reason=reason, similar=similar,

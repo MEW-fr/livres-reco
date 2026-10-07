@@ -109,16 +109,27 @@ def book_tags(book):
 
 
 def load_books(db_path):
+    """Livres du catalogue, hors livres masqués (src.hide) : absents de l'index, ils ne
+    sont ni recommandés, ni trouvés par la recherche, ni proposés à l'accueil."""
     with get_connection(db_path) as conn:
-        rows = conn.execute("SELECT * FROM books ORDER BY id").fetchall()
-    books = []
-    for row in rows:
-        book = dict(row)
-        for key in ("authors", "categories", "themes"):
-            book[key] = json.loads(book[key]) if book[key] else []
-        book["ambiance"] = json.loads(book["ambiance"]) if book["ambiance"] else None
-        books.append(book)
-    return books
+        rows = conn.execute("SELECT * FROM books WHERE hidden = 0 ORDER BY id").fetchall()
+    return [decode_book(row) for row in rows]
+
+
+def decode_book(row):
+    """Ligne de la table books -> dict, champs JSON décodés."""
+    book = dict(row)
+    for key in ("authors", "categories", "themes"):
+        book[key] = json.loads(book[key]) if book[key] else []
+    book["ambiance"] = json.loads(book["ambiance"]) if book["ambiance"] else None
+    return book
+
+
+def load_book(book_id, db_path=DB_PATH):
+    """Un livre, masqué ou non (hors index), ou None."""
+    with get_connection(db_path) as conn:
+        row = conn.execute("SELECT * FROM books WHERE id = ?", (book_id,)).fetchone()
+    return decode_book(row) if row else None
 
 
 def book_text(book):

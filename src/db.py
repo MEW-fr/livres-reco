@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS books (
     thumbnail TEXT,
     info_link TEXT,
     avg_rating REAL,
-    ratings_count INTEGER
+    ratings_count INTEGER,
+    hidden INTEGER NOT NULL DEFAULT 0  -- 1 = livre mal classé, écarté du catalogue (src.hide)
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -80,6 +81,7 @@ def get_connection(db_path=DB_PATH):
 
 
 BOOKS_NEW_COLUMNS = {"categories", "themes", "ambiance"}
+BOOKS_ADDED_COLUMNS = {"hidden": "INTEGER NOT NULL DEFAULT 0"}  # ajoutées sans perte
 USERS_NEW_COLUMNS = {"email": "TEXT", "profile_confidence": "REAL", "profile_family": "TEXT",
                      "filters": "TEXT",  # filters : JSON (app.filters)
                      "is_demo": "INTEGER NOT NULL DEFAULT 0",  # 1 = compte fictif (src.seed)
@@ -129,6 +131,10 @@ def init_db(db_path=DB_PATH):
             conn.execute("DROP TABLE books")
         migrate_readings(conn)
         conn.executescript(SCHEMA)
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(books)")}
+        for name, sql_type in BOOKS_ADDED_COLUMNS.items():
+            if name not in columns:
+                conn.execute(f"ALTER TABLE books ADD COLUMN {name} {sql_type}")
         # Colonnes ajoutées à users après coup : ajoutées sans perdre les comptes.
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
         for name, sql_type in USERS_NEW_COLUMNS.items():
@@ -362,10 +368,12 @@ LIST_ORDER = {
 
 
 def query_readings(sql, params, db_path=DB_PATH):
-    """Lectures (avec titre, auteurs et couverture du livre) choisies par la clause sql."""
+    """Lectures (avec titre, auteurs et couverture du livre) choisies par la clause sql.
+
+    Les livres masqués (hidden) restent listés : la lecture appartient à l'utilisateur."""
     with get_connection(db_path) as conn:
         rows = conn.execute(
-            "SELECT r.*, b.title, b.authors, b.isbn, b.thumbnail FROM readings r"
+            "SELECT r.*, b.title, b.authors, b.isbn, b.thumbnail, b.hidden FROM readings r"
             f" JOIN books b ON b.id = r.book_id {sql}", params).fetchall()
     return [dict(row, status=reading_status(row),
                  authors=json.loads(row["authors"]) if row["authors"] else []) for row in rows]
