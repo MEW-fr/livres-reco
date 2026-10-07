@@ -1,4 +1,4 @@
-"""Statistiques personnelles : R11, R12, bornes de mois, aucune lecture, page /statistiques."""
+"""Statistiques personnelles : R11, R12, bornes de mois, aucune lecture, section statistiques de /profil."""
 
 from datetime import date
 
@@ -85,23 +85,46 @@ def test_genres_une_fois_par_livre():
     assert stats.genres(readings)[0]["category"] == "thriller"
 
 
-def test_page_statistiques(app, client):
+def test_themes_et_ambiances_une_fois_par_livre():
+    readings = [dict(reading(1, "2026-10-01"), themes=["crime", "secret", "crime"], ambiance="sombre"),
+                dict(reading(2, "2026-10-02"), themes=["crime"], ambiance="sombre"),
+                dict(reading(3, "2026-10-03"), themes=["amour"]),
+                reading(4, "2026-10-04")]  # ni thèmes ni ambiance
+    rows = stats.moods(readings)
+    assert rows[:2] == [{"kind": "ambiance", "key": "sombre", "count": 2},
+                        {"kind": "theme", "key": "crime", "count": 2}]
+    assert {(r["key"], r["count"]) for r in rows[2:]} == {("amour", 1), ("secret", 1)}
+    assert stats.compute([], TODAY)["moods"] == []
+    assert stats.compute([], TODAY)["month_name"] == "octobre"
+
+
+def test_statistiques_redirige_vers_profil(app, client):
+    login(client, make_user(app))
+    response = client.get("/statistiques")
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/profil#statistiques")
+
+
+def test_section_statistiques_du_profil(app, client):
     path = app.config["DB_PATH"]
     user = make_user(app)
     login(client, user)
-    response = client.get("/statistiques")
-    assert response.status_code == 200
-    assert "Pas encore de données" in response.get_data(as_text=True)
+    html = client.get("/profil").get_data(as_text=True)
+    assert 'id="statistiques"' in html and "Mes statistiques de lecture" in html
+    assert "Pas encore de données" in html
+    assert "Termine un premier livre" in html
 
     for book_id, rating in ((3, 5), (6, None)):  # 500 pages ; pages inconnues
         db.start_reading(user, book_id, "2026-09-01", today=TODAY, db_path=path)
         db.finish_reading(user, book_id, "2026-09-15", today=TODAY, db_path=path)
         reading_id = db.get_reading(user, book_id, path)["id"]
         db.save_review(user, reading_id, rating, "", path)
-    html = client.get("/statistiques").get_data(as_text=True)
+    html = client.get("/profil").get_data(as_text=True)
     assert "Étoiles lointaines" in html and "/livre/3" in html
+    assert "TON LIVRE PRÉFÉRÉ" in html and "Hélène Durand · 5/5" in html
+    assert "Science <span>1</span>" in html and "Crime <span>1</span>" in html  # thèmes
     assert "1 lecture sans nombre de pages" in html
     assert "1 livre noté sur 2" in html
-    assert "5,0" in html
-    assert "rattachées à la date de fin" in html
-    assert "/statistiques" in client.get("/profil").get_data(as_text=True)
+    assert "5,0/5" in html
+    assert "comptées à la date de fin" in html
+    assert "Termine un premier livre" not in html

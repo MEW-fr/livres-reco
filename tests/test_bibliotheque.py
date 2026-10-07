@@ -188,7 +188,14 @@ def test_page_profil(app, client, path):
     user = make_user(app)
     login(client, user)
     page = client.get("/profil").get_data(as_text=True)
-    assert "Suspense &amp; tension" in page and "Refaire le questionnaire" in page
-    assert "Thriller &amp; polar" in page            # résumé des réponses en clair
+    assert "TA BOUSSOLE LITTÉRAIRE" in page and "Mon profil" in page
+    assert "Suspense &amp; tension" in page and "Revoir mes réponses" in page
+    assert "/questionnaire/refaire" in page
+    assert "CONFIANCE DU PROFIL" in page and "<svg" in page
     assert "Tendances observées" not in page          # aucune note encore
     assert "/bibliotheque?onglet=en-cours" in page and "/bibliotheque?onglet=termines" in page
+    # Raccourcis : univers, pile à lire, renouvellement (POST).
+    assert "/explorer" in page and "/bibliotheque?onglet=a-lire" in page
+    assert 'action="/accueil/renouveler"' in page
+    # Statistiques fusionnées, plus d'entrée dédiée dans le menu.
+    assert 'id="statistiques"' in page and "▥ Statistiques" not in page

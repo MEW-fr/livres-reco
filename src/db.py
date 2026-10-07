@@ -484,12 +484,15 @@ def list_ratings(user_id, db_path=DB_PATH):
 
 
 def list_finished_for_stats(user_id, db_path=DB_PATH):
-    """Lectures terminées avec pages et catégories du livre (src.stats)."""
+    """Lectures terminées avec auteurs, pages, catégories, thèmes et ambiance (src.stats)."""
     with get_connection(db_path) as conn:
         rows = conn.execute(
-            "SELECT r.id, r.book_id, r.start_date, r.end_date, r.rating, b.title,"
-            " b.page_count, b.categories FROM readings r JOIN books b ON b.id = r.book_id"
+            "SELECT r.id, r.book_id, r.start_date, r.end_date, r.rating, b.title, b.authors,"
+            " b.page_count, b.categories, b.themes, b.ambiance FROM readings r"
+            " JOIN books b ON b.id = r.book_id"
             " WHERE r.user_id = ? AND r.end_date IS NOT NULL ORDER BY r.id",
             (user_id,)).fetchall()
-    return [dict(row, categories=json.loads(row["categories"]) if row["categories"] else [])
+    return [dict(row, **{key: json.loads(row[key]) if row[key] else default
+                         for key, default in (("authors", []), ("categories", []),
+                                              ("themes", []), ("ambiance", None))})
             for row in rows]

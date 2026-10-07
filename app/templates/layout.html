@@ -32,7 +32,6 @@
       <a class="nav-item{% if active == 'explorer' %} active{% endif %}" href="{{ url_for('main.explorer') }}">✦ Explorer</a>
       <a class="nav-item{% if active == 'bibliotheque' %} active{% endif %}" href="{{ url_for('library.bibliotheque') }}">▤ Ma bibliothèque <span class="nav-badge">{{ library_count or 0 }}</span></a>
       <a class="nav-item{% if active == 'profil' %} active{% endif %}" href="{{ url_for('library.profil') }}">◎ Mon profil</a>
-      <a class="nav-item{% if active == 'statistiques' %} active{% endif %}" href="{{ url_for('library.statistiques') }}">▥ Statistiques</a>
     </nav>
     <div class="profile-mini">
       <span class="eyebrow-small">TON PROFIL</span>

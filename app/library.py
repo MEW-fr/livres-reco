@@ -5,10 +5,9 @@ from datetime import date
 from flask import (Blueprint, abort, flash, g, redirect, render_template, request, url_for)
 
 from app.auth import db_path, profile_required
-from app.survey import OTHER_TEXT_ID
 from src import db, stats
 from src.profile import save_learned
-from src.questions import AMBIANCE_LABELS, CATEGORY_LABELS, QUESTIONS, THEME_LABELS
+from src.questions import AMBIANCE_LABELS, CATEGORY_LABELS, THEME_LABELS
 
 bp = Blueprint("library", __name__)
 
@@ -135,31 +134,11 @@ def avis(reading_id):
                            comment_max=db.COMMENT_MAX)
 
 
-# --- Profil -------------------------------------------------------------------------------
-
-def answers_summary(answers):
-    """[(question, réponses en clair)] du questionnaire."""
-    rows = []
-    for q in QUESTIONS:
-        labels = {o["code"]: o["label"] for o in q["options"]}
-        answer = answers.get(q["id"])
-        codes = [answer] if isinstance(answer, str) else answer or []
-        texts = [labels.get(code, code) for code in codes]
-        if "autre" in codes and answers.get(OTHER_TEXT_ID):
-            texts[codes.index("autre")] = f"Autre : {answers[OTHER_TEXT_ID]}"
-        rows.append((q["text"], ", ".join(texts) or "—"))
-    return rows
-
+# --- Profil et statistiques ---------------------------------------------------------------
 
 DIMENSIONS = (("genres", CATEGORY_LABELS), ("themes", THEME_LABELS),
               ("ambiances", AMBIANCE_LABELS))
-
-
-def declared(profile):
-    """Préférences déclarées au questionnaire (valeurs initiales), en clair."""
-    titles = {"genres": "Genres", "themes": "Thèmes", "ambiances": "Ambiances"}
-    return [(titles[dim], [labels.get(k, k) for k in profile["initial"][dim]])
-            for dim, labels in DIMENSIONS if profile["initial"][dim]]
+MOOD_LABELS = {"theme": THEME_LABELS, "ambiance": AMBIANCE_LABELS}
 
 
 def trends(profile):
@@ -179,20 +158,18 @@ def trends(profile):
 def profil():
     user_id = g.user["id"]
     profile = db.load_profile(user_id, db_path())
+    data = stats.compute(db.list_finished_for_stats(user_id, db_path()))
+    for row in data["moods"]:
+        row["label"] = MOOD_LABELS[row["kind"]].get(row["key"], row["key"])
     return render_template(
         "library/profil.html", active="profil", profile=profile,
-        confidence=round(profile["confidence"] * 100),
-        answers=answers_summary(db.load_answers(user_id, db_path())),
-        declared=declared(profile), trends=trends(profile),
+        confidence=round(profile["confidence"] * 100), trends=trends(profile),
         counts=db.count_readings(user_id, db_path()),
-        draft=db.load_draft(user_id, db_path()) is not None)
+        draft=db.load_draft(user_id, db_path()) is not None,
+        stats=data, labels=CATEGORY_LABELS)
 
-
-# --- Statistiques ---------------------------------------------------------------------------
 
 @bp.route("/statistiques")
 @profile_required
 def statistiques():
-    data = stats.compute(db.list_finished_for_stats(g.user["id"], db_path()))
-    return render_template("library/statistiques.html", active="statistiques", stats=data,
-                           labels=CATEGORY_LABELS)
+    return redirect(url_for("library.profil", _anchor="statistiques"))

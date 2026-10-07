@@ -1,7 +1,8 @@
 """Statistiques personnelles, calculées sur les lectures terminées (logique pure).
 
 Chaque lecture est un dict : book_id, title, start_date, end_date (AAAA-MM-JJ),
-rating (1..5 ou None), page_count (entier ou None), categories (liste).
+rating (1..5 ou None), page_count (entier ou None), categories (liste) ;
+facultatifs : authors (liste), themes (liste), ambiance (code ou None).
 Dates civiles, fuseau Europe/Paris ; les pages sont rattachées à la date de fin.
 Un indicateur sans donnée vaut None : jamais de faux zéro.
 """
@@ -11,6 +12,9 @@ from zoneinfo import ZoneInfo
 
 PARIS = ZoneInfo("Europe/Paris")
 TOP_GENRES = 5
+TOP_MOODS = 8
+MONTHS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
+          "septembre", "octobre", "novembre", "décembre")
 
 
 def today_paris():
@@ -72,8 +76,23 @@ def genres(readings, limit=TOP_GENRES):
     return rows[:limit]
 
 
+def moods(readings, limit=TOP_MOODS):
+    """[{kind: 'theme' | 'ambiance', key, count}] : thèmes et ambiances des livres terminés,
+    chacun compté une fois par livre, les plus fréquents d'abord."""
+    counts = {}
+    for r in readings:
+        keys = {("theme", t) for t in r.get("themes") or []}
+        if r.get("ambiance"):
+            keys.add(("ambiance", r["ambiance"]))
+        for key in keys:
+            counts[key] = counts.get(key, 0) + 1
+    rows = [{"kind": kind, "key": key, "count": n} for (kind, key), n in counts.items()]
+    rows.sort(key=lambda row: (-row["count"], row["kind"], row["key"]))
+    return rows[:limit]
+
+
 def compute(readings, today=None):
-    """Tous les indicateurs de la page /statistiques."""
+    """Tous les indicateurs de la section statistiques de /profil."""
     today = today or today_paris()
     known = [r for r in readings if has_pages(r)]
     rated = [r for r in readings if r["rating"] is not None]
@@ -82,10 +101,12 @@ def compute(readings, today=None):
         "favorite": favorite(readings),
         "pace": pace(readings, today) if readings else None,
         "month": len(finished_this_month(readings, today)),
+        "month_name": MONTHS[today.month - 1],
         "average": average_rating(readings),
         "rated": len(rated),
         "pages": sum(r["page_count"] for r in known) if known else None,
         "unknown_pages": len(readings) - len(known),
         "biggest": biggest(readings),
         "genres": genres(readings),
+        "moods": moods(readings),
     }
