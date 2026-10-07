@@ -6,7 +6,7 @@ from flask import (Blueprint, abort, flash, g, redirect, render_template, reques
 
 from app.auth import db_path, profile_required
 from app.survey import OTHER_TEXT_ID
-from src import db
+from src import db, stats
 from src.profile import save_learned
 from src.questions import AMBIANCE_LABELS, CATEGORY_LABELS, QUESTIONS, THEME_LABELS
 
@@ -186,3 +186,13 @@ def profil():
         declared=declared(profile), trends=trends(profile),
         counts=db.count_readings(user_id, db_path()),
         draft=db.load_draft(user_id, db_path()) is not None)
+
+
+# --- Statistiques ---------------------------------------------------------------------------
+
+@bp.route("/statistiques")
+@profile_required
+def statistiques():
+    data = stats.compute(db.list_finished_for_stats(g.user["id"], db_path()))
+    return render_template("library/statistiques.html", active="statistiques", stats=data,
+                           labels=CATEGORY_LABELS)

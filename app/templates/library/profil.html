@@ -18,6 +18,7 @@
   <div class="profile-stats">
     <a class="stat" href="{{ url_for('library.bibliotheque', onglet='en-cours') }}"><strong>{{ counts['en cours'] }}</strong> en cours</a>
     <a class="stat" href="{{ url_for('library.bibliotheque', onglet='termines') }}"><strong>{{ counts['terminé'] }}</strong> terminé{{ 's' if counts['terminé'] > 1 }}</a>
+    <a class="stat" href="{{ url_for('library.statistiques') }}">▥ Mes statistiques</a>
   </div>
 
   {% if draft %}

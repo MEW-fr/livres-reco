@@ -481,3 +481,15 @@ def list_ratings(user_id, db_path=DB_PATH):
         rows = conn.execute("SELECT book_id, rating FROM readings WHERE user_id = ?"
                             " AND rating IS NOT NULL ORDER BY id", (user_id,)).fetchall()
     return [(row["book_id"], row["rating"]) for row in rows]
+
+
+def list_finished_for_stats(user_id, db_path=DB_PATH):
+    """Lectures terminées avec pages et catégories du livre (src.stats)."""
+    with get_connection(db_path) as conn:
+        rows = conn.execute(
+            "SELECT r.id, r.book_id, r.start_date, r.end_date, r.rating, b.title,"
+            " b.page_count, b.categories FROM readings r JOIN books b ON b.id = r.book_id"
+            " WHERE r.user_id = ? AND r.end_date IS NOT NULL ORDER BY r.id",
+            (user_id,)).fetchall()
+    return [dict(row, categories=json.loads(row["categories"]) if row["categories"] else [])
+            for row in rows]
