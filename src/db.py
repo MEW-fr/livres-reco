@@ -81,7 +81,8 @@ def get_connection(db_path=DB_PATH):
 
 BOOKS_NEW_COLUMNS = {"categories", "themes", "ambiance"}
 USERS_NEW_COLUMNS = {"email": "TEXT", "profile_confidence": "REAL", "profile_family": "TEXT",
-                     "filters": "TEXT"}  # filters : JSON (app.filters)
+                     "filters": "TEXT",  # filters : JSON (app.filters)
+                     "is_demo": "INTEGER NOT NULL DEFAULT 0"}  # 1 = compte fictif (src.seed)
 READINGS_COLUMNS = "id, user_id, book_id, start_date, end_date, rating, comment"
 
 

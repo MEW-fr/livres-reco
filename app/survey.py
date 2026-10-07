@@ -97,4 +97,11 @@ def finish(user_id):
 @profile_required
 def profil_cree():
     return render_template("survey/profil_cree.html",
-                           profile=db.load_profile(g.user["id"], db_path()))
+                           profile=db.load_profile(g.user["id"], db_path()), created=True)
+
+
+@bp.route("/profil")
+@profile_required
+def profil():
+    return render_template("survey/profil_cree.html",
+                           profile=db.load_profile(g.user["id"], db_path()), created=False)
