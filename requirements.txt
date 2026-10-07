@@ -1,5 +1,6 @@
-streamlit
+flask
 scikit-learn
 requests
 pandas
 pytest
+python-dotenv

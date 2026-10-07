@@ -12,8 +12,11 @@ CREATE TABLE IF NOT EXISTS books (
     title TEXT,
     authors TEXT,
     description TEXT,
-    categories_raw TEXT,
+    categories_raw TEXT,  -- JSON, catégories Google Books
     main_category TEXT,
+    categories TEXT,      -- JSON, catégories cibles sous lesquelles le livre a été collecté
+    themes TEXT,          -- JSON, liste de thèmes (src.tagging)
+    ambiance TEXT,        -- JSON, ambiance ou null (src.tagging)
     published_year INTEGER,
     page_count INTEGER,
     language TEXT,
@@ -66,7 +69,17 @@ def get_connection(db_path=DB_PATH):
     return conn
 
 
+BOOKS_NEW_COLUMNS = {"categories", "themes", "ambiance"}
+
+
 def init_db(db_path=DB_PATH):
-    """Crée les tables et index s'ils n'existent pas encore."""
+    """Crée les tables et index s'ils n'existent pas encore.
+
+    Si la table books date d'un ancien schéma (colonnes manquantes), elle est
+    supprimée puis recréée : son contenu est régénéré par src.clean.
+    """
     with get_connection(db_path) as conn:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(books)")}
+        if columns and not BOOKS_NEW_COLUMNS <= columns:
+            conn.execute("DROP TABLE books")
         conn.executescript(SCHEMA)
