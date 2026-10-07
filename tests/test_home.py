@@ -182,3 +182,13 @@ def test_pages_protegees(client):
     for url in ("/accueil", "/explorer", "/selection/pour-toi"):
         assert client.get(url).headers["Location"] == "/connexion"
     assert client.post("/accueil/renouveler").headers["Location"] == "/connexion"
+
+
+def test_affinity_thresholds():
+    assert home.affinity(92) == "Très forte affinité"
+    assert home.affinity(80) == "Très forte affinité"
+    assert home.affinity(79.9) == "Forte affinité"
+    assert home.affinity(60) == "Forte affinité"
+    assert home.affinity(40) == "Bonne affinité"
+    assert home.affinity(39.9) == "À découvrir"
+    assert home.affinity(None) is None

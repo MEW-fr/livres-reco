@@ -7,6 +7,7 @@
 - univers : 3 univers tirés des attributs les mieux pondérés du profil.
 - renouveler : réordonne les meilleurs en pénalisant les livres déjà proposés.
 - reason : phrase d'explication sur la fiche, selon la section d'origine.
+- affinity / affinity_for : badge de compatibilité tiré du score S.
 """
 
 import dataclasses
@@ -26,6 +27,9 @@ WEEK_DAYS = 7       # popularité : start_date entre J-6 et J
 RENEW_POOL = 24     # « Renouveler » puise dans les 24 meilleurs
 RENEW_PENALTY = 100.0  # points retirés au score S à chaque proposition précédente
 UNIVERSES = 3
+# Badge de compatibilité : (seuil minimal de S, libellé), du plus fort au plus faible.
+AFFINITIES = ((80, "Très forte affinité"), (60, "Forte affinité"), (40, "Bonne affinité"),
+              (float("-inf"), "À découvrir"))
 
 FAMILY_CATEGORIES = {}
 for _cat, _family in FAMILY_OF.items():
@@ -346,6 +350,22 @@ def univers(user, n=8, filters=None, db_path=DB_PATH):
 # --- Explication sur la fiche ------------------------------------------------------------
 
 SOURCES = ("pour-toi", "lecteurs", "populaires", "famille", "univers")
+RECOMMENDED = ("pour-toi", "univers")  # sections tirées de recommend : badge d'affinité
+
+
+def affinity(S):
+    """Libellé du badge de compatibilité pour un score S (None si pas de score)."""
+    if S is None:
+        return None
+    return next(label for threshold, label in AFFINITIES if S >= threshold)
+
+
+def affinity_for(user, book, db_path=DB_PATH):
+    """Badge de la fiche : S calculé comme dans recommend (nouveauté, popularité de groupe)."""
+    profile = profile_of(user)
+    N = novelty_for(profile, [book], finished_ids(user["id"], db_path), db_path=db_path)[book["id"]]
+    pop = group_popularity(lecteurs_comme_toi(user, db_path)).get(book["id"])
+    return affinity(score_book(profile, book, N, pop)[0])
 
 
 def reason(user, book, source, today=None, db_path=DB_PATH):

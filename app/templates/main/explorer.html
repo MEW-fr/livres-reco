@@ -13,7 +13,7 @@
   <p class="muted">{{ u.explanation }}</p>
   <div class="book-row">
     {% for r in u['items'] %}
-    {% with book=r.book, link_args={'from': 'univers'}, note=None %}{% include "_book_card.html" %}{% endwith %}
+    {% with book=r.book, link_args={'from': 'univers'}, note=None, affinity=r.score|affinite %}{% include "_book_card.html" %}{% endwith %}
     {% endfor %}
   </div>
 </section>

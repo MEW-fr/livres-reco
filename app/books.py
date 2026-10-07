@@ -75,10 +75,13 @@ def fiche(book_id):
     book = get_book(book_id)
     query = request.args.get("q", "").strip()
     source = request.args.get("from")
+    affinity = None
     if book["hidden"]:  # hors index : ni explication ni livres similaires
         reason = None
     elif source in home.SOURCES:
         reason = home.reason(g.user, book, source, db_path=db_path())
+        if source in home.RECOMMENDED:
+            affinity = home.affinity_for(g.user, book, db_path())
     elif query:
         reason = f"Correspond à ta recherche « {query} »."
     else:
@@ -89,7 +92,7 @@ def fiche(book_id):
                engine.similar_books(book_id, 5, filters=filters, db_path=db_path()))
 
     return render_template(
-        "books/fiche.html", book=book, reason=reason, similar=similar,
+        "books/fiche.html", book=book, reason=reason, book_affinity=affinity, similar=similar,
         reading=db.get_reading(g.user["id"], book_id, db_path()),
         group=GROUP_OF.get(book["main_category"]),
         categories=[CATEGORY_LABELS.get(c, c) for c in dict.fromkeys(

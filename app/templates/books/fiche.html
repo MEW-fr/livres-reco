@@ -10,6 +10,7 @@
     <h1 class="page-title">{{ book.title }}</h1>
     <p class="book-page-authors">{{ book.authors|join(', ') if book.authors else 'Auteur : ' ~ missing }}</p>
 
+    {% if book_affinity %}<span class="affinity">{{ book_affinity }}</span>{% endif %}
     {% if reason %}<p class="reason">✦ {{ reason }}</p>{% endif %}
 
     <section class="reading-actions card">

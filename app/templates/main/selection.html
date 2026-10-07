@@ -9,7 +9,7 @@
 {% if section['items'] %}
 <div class="book-grid">
   {% for item in section['items'] %}
-  {% with book=item.book, link_args={'from': section.kind}, note=item.note %}{% include "_book_card.html" %}{% endwith %}
+  {% with book=item.book, link_args={'from': section.kind}, note=item.note, affinity=item.get('score')|affinite %}{% include "_book_card.html" %}{% endwith %}
   {% endfor %}
 </div>
 {% if more %}

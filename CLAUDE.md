@@ -25,7 +25,11 @@ littérature générale, thriller, policier, science-fiction, dystopie, fantasti
 - Réponses concises ; ne pas réécrire des fichiers non demandés.
 
 ## Design
-Suivre les captures de `docs/maquettes/` : police ronde (type Nunito/Fredoka), fond clair dégradé, cartes arrondies, accents violet `#6C4FE0` et vert citron.
+Suivre les captures de `docs/maquettes/` et la charte `docs/charte/Logo.pdf` :
+- Couleurs (variables CSS) : `--violet` #7B61FF, `--rose` #FF6F96, `--encre` #1E1B3A ; vert citron (`--lime`) pour les badges.
+- Police Nunito partout : Medium (500) pour le texte, Black (900) pour les titres.
+- Fond clair dégradé, cartes arrondies.
+- Logo : `app/static/img/logo.png` (livre ouvert violet/rose avec un visage), favicon `app/static/img/favicon.png`.
 
 ## Conventions
 - Toute route hors inscription, connexion et questionnaire est protégée par le décorateur `@profile_required`, qui redirige vers le questionnaire tant que le profil n'est pas calculé.

@@ -6,13 +6,22 @@
       <p class="eyebrow">{{ section.eyebrow }}</p>
       <h2>{{ section.title }}</h2>
     </div>
-    <p class="muted small section-subtitle">{{ section.subtitle }}</p>
+    {% if section['items'] %}
+    <div class="section-actions">
+      {% if section.kind == 'pour-toi' %}
+      <form method="post" action="{{ url_for('main.renouveler') }}">
+        <button class="btn btn-lime btn-small" type="submit">↻ Renouveler</button>
+      </form>
+      {% endif %}
+      <a class="btn btn-ghost btn-small" href="{{ url_for('main.selection', kind=section.kind) }}">Voir toute la sélection →</a>
+    </div>
+    {% endif %}
   </div>
   {% if section.notice %}<div class="notice"><p>{{ section.notice }}</p></div>{% endif %}
   {% if section['items'] %}
   <div class="book-row">
     {% for item in section['items'] %}
-    {% with book=item.book, link_args={'from': section.kind}, note=item.note %}{% include "_book_card.html" %}{% endwith %}
+    {% with book=item.book, link_args={'from': section.kind}, note=item.note, affinity=item.get('score')|affinite %}{% include "_book_card.html" %}{% endwith %}
     {% endfor %}
   </div>
   {% else %}
@@ -22,14 +31,5 @@
     {% if active_filters %}<button class="btn btn-lime btn-small" type="button" data-filters-open>Ajuster mes filtres</button>{% endif %}
   </div>
   {% endif %}
-  {% if section['items'] %}
-  <div class="section-actions">
-    {% if section.kind == 'pour-toi' %}
-    <form method="post" action="{{ url_for('main.renouveler') }}">
-      <button class="btn btn-lime btn-small" type="submit">↻ Renouveler</button>
-    </form>
-    {% endif %}
-    <a class="btn btn-ghost btn-small" href="{{ url_for('main.selection', kind=section.kind) }}">Voir toute la sélection →</a>
-  </div>
-  {% endif %}
+  <p class="muted small section-subtitle">{{ section.subtitle }}</p>
 </section>

@@ -24,6 +24,11 @@ def jour(value):
     return home.format_day(value)
 
 
+@bp.app_template_filter("affinite")
+def affinite(score):
+    return home.affinity(score)
+
+
 @bp.app_context_processor
 def inject_library_count():
     """Badge « Ma bibliothèque » du menu latéral."""
@@ -66,7 +71,7 @@ def home_sections():
     pour_toi = home.section(
         "pour-toi", "TON PROCHAIN CRUSH LECTURE", "Choisis pour toi",
         "Les correspondances les plus fortes avec tes préférences déclarées.",
-        [{"book": r["book"], "note": None} for r in picks],
+        [{"book": r["book"], "note": None, "score": r["score"]} for r in picks],
         "Aucun livre ne passe tes filtres actuels : élargis-les pour voir des suggestions.")
     return [pour_toi, *home.community_sections(g.user, SECTION_SIZE, filters,
                                                db_path=db_path())]
@@ -91,7 +96,8 @@ def selection(kind):
         results = home.pour_toi(g.user, limit + 1, filters, db_path=db_path())
         found = home.section(kind, "TON PROCHAIN CRUSH LECTURE", "Choisis pour toi",
                              "Toute ta sélection, de la meilleure correspondance à la suivante.",
-                             [{"book": r["book"], "note": None} for r in results],
+                             [{"book": r["book"], "note": None, "score": r["score"]}
+                              for r in results],
                              "Aucun livre ne passe tes filtres actuels.")
     else:
         found = next((s for s in home.community_sections(g.user, limit + 1, filters,

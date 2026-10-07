@@ -1,6 +1,6 @@
 {% macro logo() %}
 <a class="logo" href="{{ url_for('main.accueil') }}">
-  <span class="logo-mark" aria-hidden="true"><span>•‿•</span></span>
+  <img class="logo-mark" src="{{ url_for('static', filename='img/logo.png') }}" alt="" width="48" height="45">
   <span class="logo-text">Et maintenant,<br><strong>je lis quoi ?</strong></span>
 </a>
 {% endmacro %}
