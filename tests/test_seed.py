@@ -2,6 +2,7 @@
 
 Le script tourne sur une base temporaire qui reçoit une copie du catalogue réel."""
 
+from collections import Counter
 from datetime import date, timedelta
 
 import pytest
@@ -9,7 +10,7 @@ import pytest
 from app import create_app
 from conftest import login
 from src import db, engine, seed
-from src.profile import FAMILY_OF, build_profile, recompute_learned
+from src.profile import FAMILIES, FAMILY_OF, build_profile, recompute_learned
 
 TODAY = date(2026, 10, 7)
 CATALOG = db.DB_PATH
@@ -44,30 +45,56 @@ def test_contraintes_de_demo(path):
     result = seed.run(path, today=TODAY, out=quiet)
     assert result["accounts"] == len(seed.PERSONAS)
 
-    # (a) au moins 8 lecteurs cette semaine ; 3 livres du moment à 4-6 lecteurs chacun.
-    assert result["week_readers"] >= 8
-    assert sum(4 <= n <= 6 for _, n in result["popular"]) >= 3
-    # (b) 4 livres terminés par au moins 5 des 6 suspense (lucie n'a que 4 lectures dont
-    # 2 à lire) ; 3 livres terminés par les 6 psychologie.
-    assert result["shared"]["suspense"]["members"] == 6
-    assert sum(n >= 5 for n in result["shared"]["suspense"]["books"]) >= 4
-    assert result["shared"]["psychologie"]["members"] == 6
-    assert sum(n == 6 for n in result["shared"]["psychologie"]["books"]) >= 3
-    # Lecteurs contributeurs : au moins 5 en psychologie et en imaginaire.
-    contributors = dict(result["contributors"])
-    assert contributors["psychologie"] >= 5 and contributors["imaginaire"] >= 5
+    # (a) au moins 20 lecteurs cette semaine ; 5 livres du moment à 4-8 lecteurs chacun.
+    assert result["week_readers"] >= 20
+    assert sum(4 <= n <= 8 for _, n in result["popular"]) >= 5
+    # (b) au moins 6 lecteurs contributeurs et 3 livres terminés en commun par famille.
+    families = result["families"]
+    assert set(families) == set(FAMILIES)
+    for data in families.values():
+        assert data["members"] >= 6 and data["contributors"] == data["members"]
+        assert len(data["shared"]) >= 3
+    # Première vague : 4 livres terminés par au moins 5 des 6 premiers suspense.
+    assert sum(n >= 5 for n in families["suspense"]["shared"]) >= 4
 
 
 def test_livres_du_moment(path):
     result = seed.run(path, today=TODAY, out=quiet)
     index = engine.get_index(path)
     by_title = {b["title"]: b for b in index.books}
-    moments = [by_title[title] for title, n in result["popular"] if 4 <= n <= 6]
-    assert sorted(FAMILY_OF[b["main_category"]] for b in moments) == [
-        "imaginaire", "psychologie", "suspense"]
+    moments = [by_title[title] for title, n in result["popular"] if 4 <= n <= 8]
+    assert sorted(FAMILY_OF[b["main_category"]] for b in moments) == sorted(seed.MOMENT_FAMILIES)
     for book in moments:
         assert len(book["description"]) >= seed.MOMENT_MIN_DESCRIPTION
         assert not any(word in book["title"].lower() for word in seed.MOMENT_BANNED)
+        assert "\ufffd" not in book["description"]
+
+
+def test_premiere_vague_inchangee(path):
+    """Les personas de la première vague ne dépendent pas de la seconde."""
+    first = seed.PERSONAS[:seed.FIRST_WAVE]
+    seed.run(path, today=TODAY, out=quiet)
+    full = {(r["username"], r["book_id"], r["rank"], r["start_date"], r["end_date"], r["rating"],
+             r["comment"]) for r in demo_readings(path) if r["username"] in {p[0] for p in first}}
+    original = seed.PERSONAS
+    try:
+        seed.PERSONAS = first
+        seed.run(path, reset=True, today=TODAY, out=quiet)
+    finally:
+        seed.PERSONAS = original
+    assert {(r["username"], r["book_id"], r["rank"], r["start_date"], r["end_date"], r["rating"],
+             r["comment"]) for r in demo_readings(path)} == full
+
+
+def test_aucun_livre_masque(path):
+    with db.get_connection(path) as conn:
+        hidden = conn.execute("SELECT id FROM books WHERE hidden = 0 LIMIT 1").fetchone()["id"]
+        conn.execute("UPDATE books SET hidden = 1 WHERE id = ?", (hidden,))
+    engine.reset_cache()
+    seed.run(path, today=TODAY, out=quiet)
+    with db.get_connection(path) as conn:
+        assert not conn.execute("SELECT 1 FROM readings r JOIN books b ON b.id = r.book_id"
+                                " WHERE b.hidden = 1").fetchone()
 
 
 def test_lectures_coherentes(path):
@@ -92,10 +119,13 @@ def test_lectures_coherentes(path):
             assert 5 <= (end - start).days <= 30 and end <= TODAY
         else:
             assert r["rating"] is None
-    finished = [r for r in rows if r["end_date"]]
-    rated = [r for r in finished if r["rating"]]
-    assert len(finished) - len(rated) == round(0.2 * len(finished))
-    assert sum(r["comment"] is not None for r in rated) == round(len(rated) / 2)
+    # Notes et commentaires : tirés vague par vague.
+    for wave in (seed.PERSONAS[:seed.FIRST_WAVE], seed.PERSONAS[seed.FIRST_WAVE:]):
+        pseudos = {row[0] for row in wave}
+        finished = [r for r in rows if r["end_date"] and r["username"] in pseudos]
+        rated = [r for r in finished if r["rating"]]
+        assert len(finished) - len(rated) == round(0.2 * len(finished))
+        assert sum(r["comment"] is not None for r in rated) == round(len(rated) / 2)
 
 
 def test_profils_et_filtres(path):
@@ -106,13 +136,17 @@ def test_profils_et_filtres(path):
     assert users["karim"]["profile_family"] == "suspense"
     assert users["marc"]["profile_family"] == "psychologie"
     assert users["camille"]["profile_family"] == "éclectique"
+    families = Counter(u["profile_family"] for u in users.values())
+    assert families == {"suspense": 11, "psychologie": 11, "imaginaire": 6, "histoire": 6,
+                        "réel et idées": 6, "éclectique": 6}
     assert db.get_filters(users["antoine"]["id"], path)["exclusions"] == ["romance", "fantasy"]
-    # Profil enregistré = profil du questionnaire recalculé avec toutes les notes.
+    # Profil enregistré = profil du questionnaire recalculé avec toutes les notes, dans
+    # l'ordre où l'application les relit (save_learned).
     index = engine.get_index(path)
     for row in seed.PERSONAS:
         user_id = users[row[0]]["id"]
-        notes = [(index.books[index.row_of[r["book_id"]]], r["rating"])
-                 for r in db.list_readings(user_id, db_path=path) if r["rating"]]
+        notes = [(index.books[index.row_of[book_id]], rating)
+                 for book_id, rating in db.list_ratings(user_id, path)]
         expected = recompute_learned(build_profile(seed.answers_of(row)), notes)
         assert db.load_profile(user_id, path) == expected
 

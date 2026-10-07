@@ -10,6 +10,10 @@ Usage :
 Chaque persona (e-mail <pseudo>@exemple.fr, mot de passe commun « demo1234 ») répond au
 questionnaire, puis suit des livres tirés de ses recommandations (plus 1 ou 2 hors profil).
 Les dates sont relatives à aujourd'hui ; la graine aléatoire est fixe (résultat reproductible).
+
+Les personas arrivent en deux vagues : les FIRST_WAVE premiers (graine SEED, réglages
+d'origine) restent identiques ; la seconde vague (graine SEED + 1) complète chaque famille,
+rejoint les livres du moment et ajoute ceux des familles histoire et réel et idées.
 """
 
 import json
@@ -24,7 +28,7 @@ from app.filters import from_answers
 from src import db, engine, home
 from src.db import DB_PATH
 from src.engine import book_categories
-from src.profile import FAMILY_OF, build_profile, recommend, recompute_learned
+from src.profile import ECLECTIC, FAMILIES, FAMILY_OF, build_profile, recommend, recompute_learned
 from src.questions import NEUTRAL
 
 SEED = 2026
@@ -33,12 +37,15 @@ EMAIL_DOMAIN = "exemple.fr"
 POOL = 40              # recommandations dans lesquelles on puise les lectures
 PILE = (2, 3)          # livres à lire par persona
 MAX_READING = 2        # livres en cours par persona
-MOMENT_FAMILIES = ("suspense", "psychologie", "imaginaire")  # un livre « du moment » par
-MOMENT_READERS = (4, 6)  # famille, commencé cette semaine par 4 à 6 personas
+FIRST_WAVE = 23        # personas de la première vague, inchangés
+MOMENT_FAMILIES = ("suspense", "psychologie", "imaginaire", "histoire", "réel et idées")
+MOMENT_READERS = (4, 8)  # un livre « du moment » par famille, commencé cette semaine
+FIRST_MOMENTS = (MOMENT_FAMILIES[:3], (4, 6))  # réglages de la première vague
 MOMENT_MIN_DESCRIPTION = 500
 MOMENT_BANNED = ("œuvre", "oeuvre", "création", "roman de", "étude")  # études littéraires
 MIN_FINISHED = 1       # chaque persona a terminé au moins un livre (lecteur contributeur)
-SHARED = {"suspense": 4, "psychologie": 3}  # livres terminés en commun par famille
+SHARED = {"suspense": 4, "psychologie": 3}  # livres terminés en commun (première vague)
+SECOND_SHARED = 3      # seconde vague : livres terminés en commun dans chaque famille
 FINISHED_START = (5, 90)  # début d'un livre terminé : entre J-90 et J-5
 FINISHED_SPAN = (5, 30)   # fin : 5 à 30 jours après le début, jamais dans le futur
 READING_START = (7, 40)   # début d'un livre en cours (hors livres du moment)
@@ -97,6 +104,54 @@ PERSONAS = [
      "surprise", 4),
     # Éclectique
     ("camille", [N], [N], [N], N, N, [N], N, N, 3),
+    # --- Seconde vague -----------------------------------------------------------------
+    # Suspense
+    ("bastien", ["thriller_polar"], ["crime", "secret"], ["sombre"], "moyen", "toutes",
+     ["romance"], "themes", "proche", 8),
+    ("chloe", ["thriller_polar", "litterature"], ["secret"], ["tendue", "sombre"], "court",
+     "recents", ["aucun"], "varier", "mixte", 6),
+    ("rachid", ["thriller_polar"], ["crime", "survie"], ["tendue"], "long", "nouveautes",
+     ["fantasy"], "nouveau", "surprise", 9),
+    ("margaux", ["thriller_polar", "romance"], ["crime", "amour"], ["tendue"], "moyen",
+     "recents", ["science_fiction"], "profil", "mixte", 7),
+    ("gaspard", ["thriller_polar"], ["crime"], ["sombre"], N, "classiques", ["aucun"], "temps",
+     "proche", 6),
+    # Psychologie
+    ("elise", ["litterature"], ["famille", "memoire"], ["intimiste"], "moyen", "toutes",
+     ["thriller_polar"], "themes", "proche", 7),
+    ("samir", ["litterature", "romance"], ["amour", "secret"], ["intimiste", "legere"], "court",
+     "recents", ["aucun"], "varier", "mixte", 6),
+    ("manon", ["romance"], ["amour", "famille"], ["legere"], "court", "nouveautes",
+     ["fantasy", "science_fiction"], "temps", "proche", 8),
+    ("victor", ["litterature"], ["societe", "famille"], ["intimiste"], "long", "classiques",
+     ["romance"], "nouveau", "surprise", 7),
+    ("zoe", ["litterature", "romance"], ["famille"], [N], "moyen", N, ["aucun"], "profil",
+     "mixte", 6),
+    # Imaginaire
+    ("adam", ["fantasy", "science_fiction"], ["survie", "secret"], ["epique", "sombre"], "long",
+     "recents", ["romance"], "nouveau", "mixte", 8),
+    # Histoire
+    ("ophelie", ["histoire_aventure"], ["memoire", "famille"], ["epique"], "long", "toutes",
+     ["science_fiction"], "themes", "mixte", 7),
+    ("baptiste", ["histoire_aventure", "biographies"], ["memoire", "survie"], ["epique"],
+     "moyen", "classiques", ["romance"], "temps", "proche", 6),
+    ("leila", ["histoire_aventure", "litterature"], ["memoire", "amour"], ["intimiste", "epique"],
+     "moyen", "recents", ["aucun"], "varier", "surprise", 8),
+    # Réel et idées
+    ("gilles", ["essais"], ["societe", "science"], [N], "moyen", "toutes", ["fantasy"], "themes",
+     "proche", 7),
+    ("aicha", ["biographies", "essais"], ["memoire", "societe"], ["intimiste"], "court",
+     "recents", ["aucun"], "nouveau", "mixte", 6),
+    ("raphael", ["essais", "science_fiction"], ["science"], [N], "long", "nouveautes",
+     ["romance"], "varier", "surprise", 8),
+    ("odile", ["biographies"], ["famille", "memoire"], ["intimiste"], "moyen", "classiques",
+     ["thriller_polar"], "temps", "proche", 6),
+    # Éclectique : q1 et q3 neutres, une ou deux autres réponses
+    ("mathis", [N], ["societe"], [N], N, N, [N], N, "surprise", 6),
+    ("rose", [N], [N], [N], "court", N, [N], N, N, 6),
+    ("kevin", [N], [N], [N], N, "classiques", [N], "temps", N, 7),
+    ("anais", [N], ["amour"], [N], N, N, ["fantasy"], N, N, 6),
+    ("paul", [N], [N], [N], "long", N, [N], "nouveau", N, 7),
 ]
 
 COMMENTS = {
@@ -158,9 +213,9 @@ def required_finished(p):
 
 
 def moment_candidate(book):
-    """Roman à description assez longue, hors études littéraires (titre)."""
-    title = book["title"].lower()
-    return (len(book["description"] or "") >= MOMENT_MIN_DESCRIPTION
+    """Roman à description assez longue et bien encodée, hors études littéraires (titre)."""
+    title, description = book["title"].lower(), book["description"] or ""
+    return (len(description) >= MOMENT_MIN_DESCRIPTION and "\ufffd" not in description
             and not any(word in title for word in MOMENT_BANNED))
 
 
@@ -171,33 +226,58 @@ def spare(p):
     return p["total"] - PILE[0] - required_finished(p) - len(p["moment"])
 
 
-def plan_readings(personas, books, rng):
-    """Remplit p["finished"], p["reading"] (livres), p["moment"], p["pile"] de chaque persona."""
+def plan_readings(personas, books, rng, shared=SHARED, moments=FIRST_MOMENTS, before=()):
+    """Remplit p["finished"], p["reading"] (livres), p["moment"], p["pile"] de chaque persona.
+
+    shared : {famille: livres terminés en commun} ; moments : (familles, (min, max) lecteurs).
+    before : personas déjà planifiés (vague précédente), que ceux-ci complètent."""
     for p in personas:
         p.update(shared=[], moment=[], used=set(), pool_ids={b["id"] for b in p["pool"]})
+    current = {}  # famille -> (livre du moment de la vague précédente, lecteurs)
+    for p in before:
+        for book in p["moment"]:
+            family = FAMILY_OF[book["main_category"]]
+            current[family] = (book, current.get(family, (book, 0))[1] + 1)
+    families, readers = moments
 
-    # (b) Livres terminés en commun dans une famille ; un persona avec peu de lectures
-    # n'en prend que ce que sa pile lui laisse.
-    reserved = set()
-    for family, k in SHARED.items():
+    # (b) Livres terminés en commun dans une famille, de préférence ceux que la vague
+    # précédente a déjà terminés ; un persona avec peu de lectures n'en prend que ce que
+    # sa pile lui laisse.
+    reserved = {book["id"] for book, _ in current.values()}
+    for family, k in shared.items():
         members = [p for p in personas if p["family"] == family]
-        common = popular_in(members, reserved)[:k]
+        if not members:
+            continue
+        done = Counter(b["id"] for p in before if p["family"] == family for b in p["finished"])
+        common = sorted(popular_in(members, reserved), key=lambda b: -done[b["id"]])[:k]
         reserved |= {b["id"] for b in common}
         for p in members:
             p["shared"] = rng.sample(common, min(k, p["total"] - PILE[0]))
             p["used"] |= {b["id"] for b in p["shared"]}
 
     # (a) Livres du moment : pour chaque famille, le roman le plus recommandé qui trouve
-    # assez de lecteurs ; commencé cette semaine.
+    # assez de lecteurs ; commencé cette semaine. Un livre de la vague précédente est
+    # repris (et complété jusqu'à readers[1] lecteurs) ; les nouvelles familles d'abord.
+    def candidates_for(book):
+        found = [p for p in personas if spare(p) > 0
+                 and not excludes(p["profile"], book) and book["id"] not in p["used"]]
+        rng.shuffle(found)
+        # D'abord ceux sans livre du moment, puis ceux à qui il est recommandé.
+        found.sort(key=lambda p: (len(p["moment"]), book["id"] not in p["pool_ids"]))
+        return found
+
     ranked = [b for b in popular_in(personas, reserved, strict=False) if moment_candidate(b)]
-    for family in MOMENT_FAMILIES:
+    for family in sorted(families, key=lambda f: f in current):
+        if family in current:
+            book, n = current[family]
+            k = rng.randint(max(n, readers[0]), readers[1]) - n
+            for p in candidates_for(book)[:k]:
+                p["moment"].append(book)
+                p["used"].add(book["id"])
+            continue
         for book in (b for b in ranked if FAMILY_OF[b["main_category"]] == family):
-            candidates = [p for p in personas if spare(p) > 0
-                          and not excludes(p["profile"], book) and book["id"] not in p["used"]]
-            rng.shuffle(candidates)
-            # D'abord ceux sans livre du moment, puis ceux à qui il est recommandé.
-            candidates.sort(key=lambda p: (len(p["moment"]), book["id"] not in p["pool_ids"]))
-            k = rng.randint(*MOMENT_READERS)
+            candidates = candidates_for(book)
+            k = rng.randint(*readers)
             if len(candidates) < k:
                 continue
             for p in candidates[:k]:
@@ -312,7 +392,6 @@ def date_rows(p, today, rng):
 def run(db_path=DB_PATH, reset=False, today=None, out=print):
     """Crée les comptes démo ; renvoie le rapport (voir report)."""
     today = today or date.today()
-    rng = random.Random(SEED)
     db.init_db(db_path)
     pseudos = [row[0] for row in PERSONAS]
     with db.get_connection(db_path) as conn:
@@ -337,20 +416,26 @@ def run(db_path=DB_PATH, reset=False, today=None, out=print):
         pool = [r["book"] for r in recommend(profile, POOL, db_path=db_path)]
         personas.append({"pseudo": row[0], "total": row[-1], "answers": answers,
                          "profile": profile, "family": profile["family"], "pool": pool})
-    plan_readings(personas, index.books, rng)
+    first, second = personas[:FIRST_WAVE], personas[FIRST_WAVE:]
+    rngs = random.Random(SEED), random.Random(SEED + 1)  # une graine par vague
+    plan_readings(first, index.books, rngs[0])
+    plan_readings(second, index.books, rngs[1], {f: SECOND_SHARED for f in FAMILIES},
+                  (MOMENT_FAMILIES, MOMENT_READERS), before=first)
 
-    for p in personas:
-        date_rows(p, today, rng)
-    finished = [r for p in personas for r in p["rows"] if r["end"]]
-    for r, rating in zip(finished, rating_deck(len(finished), rng)):
-        r["rating"] = rating
-    rated = [r for r in finished if r["rating"]]
-    for r in rng.sample(rated, round(len(rated) / 2)):
-        r["comment"] = comment_for(r["rating"], rng)
+    for wave, rng in zip((first, second), rngs):
+        for p in wave:
+            date_rows(p, today, rng)
+        finished = [r for p in wave for r in p["rows"] if r["end"]]
+        for r, rating in zip(finished, rating_deck(len(finished), rng)):
+            r["rating"] = rating
+        rated = [r for r in finished if r["rating"]]
+        for r in rng.sample(rated, round(len(rated) / 2)):
+            r["comment"] = comment_for(r["rating"], rng)
 
     with db.get_connection(db_path) as conn:
-        for p in personas:
-            p["id"] = write_persona(conn, p, today, rng)
+        for wave, rng in zip((first, second), rngs):
+            for p in wave:
+                p["id"] = write_persona(conn, p, today, rng)
     for p in personas:
         db.save_profile(p["id"], p["profile"], db_path)
         notes = [(r["book"], r["rating"]) for r in p["rows"] if r["rating"]]
@@ -363,37 +448,42 @@ def run(db_path=DB_PATH, reset=False, today=None, out=print):
 
 
 def report(db_path=DB_PATH, today=None):
-    """Comptes, lectures par statut, populaires de la semaine, contributeurs par famille,
-    et vérification des contraintes de démo (lectures de la semaine, livres en commun)."""
+    """Comptes, lectures par statut, populaires de la semaine, puis par famille : lecteurs,
+    contributeurs (au moins un livre terminé), lecteurs actifs cette semaine, livres terminés
+    en commun (lecteurs de chacun) et livre du moment (le plus commencé cette semaine)."""
     today = today or date.today()
     week_start = days_ago(today, home.WEEK_DAYS - 1).isoformat()
     with db.get_connection(db_path) as conn:
         users = conn.execute("SELECT id, username, profile_family FROM users"
                              " WHERE is_demo = 1").fetchall()
         readings = conn.execute(
-            "SELECT r.* FROM readings r JOIN users u ON u.id = r.user_id"
+            "SELECT r.*, b.title, b.main_category FROM readings r"
+            " JOIN users u ON u.id = r.user_id JOIN books b ON b.id = r.book_id"
             " WHERE u.is_demo = 1").fetchall()
-        contributors = conn.execute(
-            "SELECT u.profile_family AS family, COUNT(DISTINCT r.user_id) AS n"
-            " FROM readings r JOIN users u ON u.id = r.user_id WHERE r.end_date IS NOT NULL"
-            " GROUP BY u.profile_family ORDER BY n DESC, family").fetchall()
     family_of = {u["id"]: u["profile_family"] for u in users}
-    shared = {}
-    for family in SHARED:
-        counts = Counter(r["book_id"] for r in readings
-                         if r["end_date"] and family_of[r["user_id"]] == family)
-        shared[family] = {"members": sum(f == family for f in family_of.values()),
-                          "books": sorted((n for n in counts.values() if n >= 2), reverse=True)}
     week = [r for r in readings
             if r["start_date"] and week_start <= r["start_date"] <= today.isoformat()]
+    families = {}
+    for family in FAMILIES:
+        mine = [r for r in readings if family_of[r["user_id"]] == family]
+        finished = Counter(r["book_id"] for r in mine if r["end_date"])
+        started = Counter((r["title"], r["main_category"]) for r in week)
+        moment = max(((title, n) for (title, cat), n in started.items()
+                      if FAMILY_OF[cat] == family), key=lambda t: t[1], default=None)
+        families[family] = {
+            "members": sum(f == family for f in family_of.values()),
+            "contributors": len({r["user_id"] for r in mine if r["end_date"]}),
+            "week_readers": len({r["user_id"] for r in week if family_of[r["user_id"]] == family}),
+            "shared": sorted((n for n in finished.values() if n >= 2), reverse=True),
+            "moment": moment,
+        }
     populaires = home.populaires_semaine(today, db_path)
     return {
         "accounts": len(users),
         "statuses": Counter(db.reading_status(r) for r in readings),
         "week_readers": len({r["user_id"] for r in week}),
         "popular": [(e["book"]["title"], e["readers"]) for e in populaires["books"]],
-        "contributors": [(row["family"], row["n"]) for row in contributors],
-        "shared": shared,
+        "families": families,
     }
 
 
@@ -406,12 +496,14 @@ def print_report(result, out=print):
     for title, readers in result["popular"]:
         if readers > 1:
             out(f"  {readers} lecteurs · {title}")
-    out("Lecteurs contributeurs (au moins un livre terminé), par famille :")
-    for family, n in result["contributors"]:
-        out(f"  {family} : {n}")
-    for family, data in result["shared"].items():
-        out(f"Livres terminés en commun ({family}, {data['members']} lecteurs) : "
-            + ", ".join(f"{n} lecteurs" for n in data["books"]))
+    out("Par famille :")
+    for family, data in result["families"].items():
+        out(f"  {family} : {data['members']} lecteurs, {data['contributors']} contributeurs,"
+            f" {data['week_readers']} actifs cette semaine")
+        out("    livres terminés en commun : "
+            + (", ".join(f"{n} lecteurs" for n in data["shared"]) or "aucun"))
+        if data["moment"] and data["moment"][1] > 1 and family != ECLECTIC:
+            out(f"    du moment : {data['moment'][0]} ({data['moment'][1]} lecteurs)")
 
 
 def main(argv):
