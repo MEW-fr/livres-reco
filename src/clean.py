@@ -30,11 +30,25 @@ NONFICTION_GOOGLE_TERMS = [
     "reference", "history", "social science", "philosophy", "religion", "juvenile nonfiction",
 ]
 # Comparés au titre normalisé ; "1837 1900" = plage d'années "1837-1900".
+# Comparés à la catégorie Google entière (sans casse) : "Science" mais pas "Science fiction".
+NONFICTION_GOOGLE_CATEGORIES = {
+    "music", "art", "performing arts", "biography & autobiography", "science",
+    "political science", "business", "psychology", "self-help", "law", "medical",
+    "technology", "travel", "cooking", "poetry", "drama", "comics",
+}
 NONFICTION_TITLE_PATTERNS = [
     "dans le roman", "le roman de", "le roman au", "roman et", "litterature", "anthologies?",
     "etudes?", "histoire du", "histoire de la", "siecles?", r"\d{4} \d{4}",
 ]
 NONFICTION_TITLE_RE = re.compile(r"\b(" + "|".join(NONFICTION_TITLE_PATTERNS) + r")\b")
+
+# Dédoublonnage secondaire : mots d'édition retirés du titre normalisé.
+EDITION_WORDS_RE = re.compile(
+    r"\b(texte integral|illustree?|annotee?|edition|nouvelle|version|complete|integrale|bilingue)\b"
+)
+LONG_TITLE_CHARS = 30  # au-delà, ce qui suit " : " ou " - " est un sous-titre, ignoré
+# Mentions d'éditeur glissées parmi les auteurs (comparées en mots entiers, sans accents).
+PUBLISHER_AUTHOR_RE = re.compile(r"\b(ligaran|editions?|collectif)\b")
 
 CATEGORY_ORDER = list(QUERIES)  # départage ultime, pour un résultat déterministe
 
@@ -67,6 +81,12 @@ def get_isbn(info, kind):
         if ident.get("type") == kind:
             return ident.get("identifier")
     return None
+
+
+def clean_authors(authors):
+    """Retire les mentions d'éditeur (Ligaran, Éditions…, Collectif) et les entrées vides."""
+    return [a.strip() for a in authors or []
+            if normalize_text(a) and not PUBLISHER_AUTHOR_RE.search(normalize_text(a))]
 
 
 # --- Étape 1 : chargement et regroupement par _google_id ---------------------
@@ -102,6 +122,7 @@ def group_by_id(items):
     for item in items:
         cat = item["_target_category"]
         info = {k: v for k, v in item.items() if not k.startswith("_")}
+        info["authors"] = clean_authors(info.get("authors"))
         entry = {
             "google_id": item["_google_id"],
             "info": info,
@@ -123,8 +144,11 @@ def is_nonfiction_in_fiction(book):
     de la non-fiction (critique, histoire, anthologie…)."""
     if main_category(book) in NONFICTION_MAIN_CATEGORIES:
         return False
-    google = " | ".join(book["info"].get("categories", [])).lower()
+    categories = [c.lower() for c in book["info"].get("categories", [])]
+    google = " | ".join(categories)
     if any(term in google for term in NONFICTION_GOOGLE_TERMS):
+        return True
+    if NONFICTION_GOOGLE_CATEGORIES & set(categories):
         return True
     return bool(NONFICTION_TITLE_RE.search(normalize_text(book["info"]["title"])))
 
@@ -173,9 +197,18 @@ def _dedupe_by(books, key_func):
     return result
 
 
+def dedupe_title(title):
+    """Titre réduit pour le dédoublonnage : sans sous-titre (titre long) ni mots d'édition.
+    "Le Père Goriot : édition illustrée annotée" -> "le pere goriot"."""
+    if len(title) > LONG_TITLE_CHARS:
+        title = re.split(r" : | - ", title, maxsplit=1)[0]
+    reduced = re.sub(r"\s+", " ", EDITION_WORDS_RE.sub(" ", normalize_text(title))).strip()
+    return reduced or normalize_text(title)
+
+
 def title_author_key(book):
     info = book["info"]
-    return normalize_text(info["title"]), normalize_text(info["authors"][0])
+    return dedupe_title(info["title"]), normalize_text(info["authors"][0])
 
 
 def dedupe(books):
