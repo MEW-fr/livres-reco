@@ -33,8 +33,11 @@ EMAIL_DOMAIN = "exemple.fr"
 POOL = 40              # recommandations dans lesquelles on puise les lectures
 PILE = (2, 3)          # livres à lire par persona
 MAX_READING = 2        # livres en cours par persona
-MOMENT_BOOKS = 3       # livres « du moment », commencés cette semaine…
-MOMENT_READERS = (4, 6)  # … par 4 à 6 personas chacun
+MOMENT_FAMILIES = ("suspense", "psychologie", "imaginaire")  # un livre « du moment » par
+MOMENT_READERS = (4, 6)  # famille, commencé cette semaine par 4 à 6 personas
+MOMENT_MIN_DESCRIPTION = 500
+MOMENT_BANNED = ("œuvre", "oeuvre", "création", "roman de", "étude")  # études littéraires
+MIN_FINISHED = 1       # chaque persona a terminé au moins un livre (lecteur contributeur)
 SHARED = {"suspense": 4, "psychologie": 3}  # livres terminés en commun par famille
 FINISHED_START = (5, 90)  # début d'un livre terminé : entre J-90 et J-5
 FINISHED_SPAN = (5, 30)   # fin : 5 à 30 jours après le début, jamais dans le futur
@@ -65,6 +68,10 @@ PERSONAS = [
      "proche", 9),
     ("marc", ["litterature", "biographies"], ["memoire", "famille"], ["intimiste"], "long",
      "classiques", ["romance"], "themes", "mixte", 5),
+    ("nina", ["litterature"], ["famille", "secret"], ["intimiste"], "moyen", "recents",
+     ["aucun"], "themes", "mixte", 6),
+    ("julien", ["romance", "litterature"], ["amour", "famille"], ["legere"], "court",
+     "nouveautes", ["fantasy"], "varier", "surprise", 5),
     # Imaginaire
     ("theo", ["science_fiction"], ["science", "survie"], ["epique"], "long", "recents",
      ["romance"], "nouveau", "surprise", 7),
@@ -74,6 +81,8 @@ PERSONAS = [
      ["aucun"], "varier", "surprise", 6),
     ("emma", ["fantasy", "romance"], ["amour", "secret"], ["poetique"], "moyen", "nouveautes",
      ["thriller_polar"], "profil", "mixte", 5),
+    ("lina", ["science_fiction", "fantasy"], ["science", "secret"], ["epique"], "long", "toutes",
+     ["aucun"], "nouveau", "mixte", 7),
     # Histoire
     ("pierre", ["histoire_aventure"], ["memoire", "societe"], ["epique"], "long", "classiques",
      ["fantasy"], "themes", "proche", 7),
@@ -144,11 +153,22 @@ def popular_in(personas, skip=(), strict=True):
             and not (strict and any(excludes(p["profile"], b) for p in personas))]
 
 
+def required_finished(p):
+    return max(len(p["shared"]), MIN_FINISHED)
+
+
+def moment_candidate(book):
+    """Roman à description assez longue, hors études littéraires (titre)."""
+    title = book["title"].lower()
+    return (len(book["description"] or "") >= MOMENT_MIN_DESCRIPTION
+            and not any(word in title for word in MOMENT_BANNED))
+
+
 def spare(p):
     """Places libres pour un livre en cours imposé (la pile garde au moins 2 livres)."""
     if len(p["moment"]) >= MAX_READING:
         return 0
-    return p["total"] - PILE[0] - len(p["shared"]) - len(p["moment"])
+    return p["total"] - PILE[0] - required_finished(p) - len(p["moment"])
 
 
 def plan_readings(personas, books, rng):
@@ -167,33 +187,31 @@ def plan_readings(personas, books, rng):
             p["shared"] = rng.sample(common, min(k, p["total"] - PILE[0]))
             p["used"] |= {b["id"] for b in p["shared"]}
 
-    # (a) Livres du moment : les plus recommandés, un par famille, commencés cette semaine.
-    families = set()
-    for book in popular_in(personas, reserved, strict=False):
-        if len(families) == MOMENT_BOOKS:
+    # (a) Livres du moment : pour chaque famille, le roman le plus recommandé qui trouve
+    # assez de lecteurs ; commencé cette semaine.
+    ranked = [b for b in popular_in(personas, reserved, strict=False) if moment_candidate(b)]
+    for family in MOMENT_FAMILIES:
+        for book in (b for b in ranked if FAMILY_OF[b["main_category"]] == family):
+            candidates = [p for p in personas if spare(p) > 0
+                          and not excludes(p["profile"], book) and book["id"] not in p["used"]]
+            rng.shuffle(candidates)
+            # D'abord ceux sans livre du moment, puis ceux à qui il est recommandé.
+            candidates.sort(key=lambda p: (len(p["moment"]), book["id"] not in p["pool_ids"]))
+            k = rng.randint(*MOMENT_READERS)
+            if len(candidates) < k:
+                continue
+            for p in candidates[:k]:
+                p["moment"].append(book)
+                p["used"].add(book["id"])
+            reserved.add(book["id"])
             break
-        family = FAMILY_OF[book["main_category"]]
-        if family in families:
-            continue
-        candidates = [p for p in personas if spare(p) > 0 and not excludes(p["profile"], book)
-                      and book["id"] not in p["used"]]
-        rng.shuffle(candidates)
-        # D'abord ceux qui n'ont pas encore de livre du moment, puis ceux à qui il est recommandé.
-        candidates.sort(key=lambda p: (len(p["moment"]), book["id"] not in p["pool_ids"]))
-        k = rng.randint(*MOMENT_READERS)
-        if len(candidates) < k:
-            continue
-        for p in candidates[:k]:
-            p["moment"].append(book)
-            p["used"].add(book["id"])
-        families.add(family)
-        reserved.add(book["id"])
 
     for p in personas:
         fixed = len(p["shared"]) + len(p["moment"])
-        pile = rng.randint(*PILE) if p["total"] - PILE[1] >= fixed else PILE[0]
+        needed = required_finished(p) + len(p["moment"])
+        pile = rng.randint(*PILE) if p["total"] - PILE[1] >= needed else PILE[0]
         reading = min(rng.randint(len(p["moment"]), MAX_READING),
-                      p["total"] - pile - len(p["shared"]))
+                      p["total"] - pile - required_finished(p))
         finished = p["total"] - pile - reading
 
         # Reste à choisir : les meilleures recommandations, plus 1 ou 2 livres hors profil.

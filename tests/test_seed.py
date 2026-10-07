@@ -9,7 +9,7 @@ import pytest
 from app import create_app
 from conftest import login
 from src import db, engine, seed
-from src.profile import build_profile, recompute_learned
+from src.profile import FAMILY_OF, build_profile, recompute_learned
 
 TODAY = date(2026, 10, 7)
 CATALOG = db.DB_PATH
@@ -48,11 +48,26 @@ def test_contraintes_de_demo(path):
     assert result["week_readers"] >= 8
     assert sum(4 <= n <= 6 for _, n in result["popular"]) >= 3
     # (b) 4 livres terminés par au moins 5 des 6 suspense (lucie n'a que 4 lectures dont
-    # 2 à lire) ; 3 livres terminés par les 4 psychologie.
+    # 2 à lire) ; 3 livres terminés par les 6 psychologie.
     assert result["shared"]["suspense"]["members"] == 6
     assert sum(n >= 5 for n in result["shared"]["suspense"]["books"]) >= 4
-    assert result["shared"]["psychologie"]["members"] == 4
-    assert sum(n == 4 for n in result["shared"]["psychologie"]["books"]) >= 3
+    assert result["shared"]["psychologie"]["members"] == 6
+    assert sum(n == 6 for n in result["shared"]["psychologie"]["books"]) >= 3
+    # Lecteurs contributeurs : au moins 5 en psychologie et en imaginaire.
+    contributors = dict(result["contributors"])
+    assert contributors["psychologie"] >= 5 and contributors["imaginaire"] >= 5
+
+
+def test_livres_du_moment(path):
+    result = seed.run(path, today=TODAY, out=quiet)
+    index = engine.get_index(path)
+    by_title = {b["title"]: b for b in index.books}
+    moments = [by_title[title] for title, n in result["popular"] if 4 <= n <= 6]
+    assert sorted(FAMILY_OF[b["main_category"]] for b in moments) == [
+        "imaginaire", "psychologie", "suspense"]
+    for book in moments:
+        assert len(book["description"]) >= seed.MOMENT_MIN_DESCRIPTION
+        assert not any(word in book["title"].lower() for word in seed.MOMENT_BANNED)
 
 
 def test_lectures_coherentes(path):
