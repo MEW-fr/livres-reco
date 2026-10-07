@@ -123,12 +123,12 @@ def inject_filters():
                                "periods": PERIOD_LABELS, "pages": PAGE_OPTIONS}}
 
 
-def back():
-    """Page d'origine (chemin interne uniquement), sinon l'accueil."""
+def back(default=None):
+    """Page d'origine (chemin interne uniquement), sinon default ou l'accueil."""
     target = request.form.get("next", "")
     if target.startswith("/") and not target.startswith("//"):
         return redirect(target)
-    return redirect(url_for("main.accueil"))
+    return redirect(default or url_for("main.accueil"))
 
 
 @bp.route("/filtres", methods=["POST"])

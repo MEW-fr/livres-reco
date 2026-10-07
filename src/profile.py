@@ -6,6 +6,7 @@
 - novelty_for : indice de nouveauté N (0-100) de chaque livre.
 - recommend : les n meilleurs livres pour un profil, avec explication.
 - recompute_learned : le profil évolue avec les notes (±0,05, plafond ±0,30).
+- save_learned : recalcul sur toutes les notes de l'utilisateur et enregistrement.
 
 Usage : python -m src.profile --demo
 """
@@ -16,7 +17,7 @@ import time
 from collections import Counter
 from datetime import date
 
-from src import engine
+from src import db, engine
 from src.db import DB_PATH
 from src.engine import book_categories, join_fr, normalize
 from src.questions import (AMBIANCE_LABELS, CATEGORY_LABELS, GROUPS, NEUTRAL, QUESTIONS_BY_ID,
@@ -478,6 +479,17 @@ def recompute_learned(profile, rated_books):
             adjust(profile["themes"], initial["themes"], key, delta)
         if book["ambiance"]:
             adjust(profile["ambiances"], initial["ambiances"], book["ambiance"], delta)
+    return profile
+
+
+def save_learned(user_id, profile, db_path=DB_PATH):
+    """recompute_learned sur toutes les lectures notées de l'utilisateur, puis
+    enregistrement : à appeler après chaque note ajoutée, modifiée ou retirée."""
+    index = engine.get_index(db_path)
+    rated = [(index.books[index.row_of[book_id]], rating)
+             for book_id, rating in db.list_ratings(user_id, db_path) if book_id in index.row_of]
+    profile = recompute_learned(profile, rated)
+    db.save_profile(user_id, profile, db_path)
     return profile
 
 

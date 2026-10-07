@@ -82,7 +82,8 @@ def get_connection(db_path=DB_PATH):
 BOOKS_NEW_COLUMNS = {"categories", "themes", "ambiance"}
 USERS_NEW_COLUMNS = {"email": "TEXT", "profile_confidence": "REAL", "profile_family": "TEXT",
                      "filters": "TEXT",  # filters : JSON (app.filters)
-                     "is_demo": "INTEGER NOT NULL DEFAULT 0"}  # 1 = compte fictif (src.seed)
+                     "is_demo": "INTEGER NOT NULL DEFAULT 0",  # 1 = compte fictif (src.seed)
+                     "draft_answers": "TEXT"}  # JSON, questionnaire refait en cours
 READINGS_COLUMNS = "id, user_id, book_id, start_date, end_date, rating, comment"
 
 
@@ -167,6 +168,32 @@ def save_answer(user_id, question_id, answer, db_path=DB_PATH):
         )
 
 
+def replace_answers(user_id, answers, db_path=DB_PATH):
+    """Remplace toutes les réponses de l'utilisateur par answers ({question_id: réponse})."""
+    with get_connection(db_path) as conn:
+        conn.execute("DELETE FROM survey_answers WHERE user_id = ?", (user_id,))
+        conn.executemany(
+            "INSERT INTO survey_answers (user_id, question_id, answer, answered_at)"
+            " VALUES (?, ?, ?, ?)",
+            [(user_id, qid, json.dumps(answer, ensure_ascii=False), now_iso())
+             for qid, answer in answers.items()],
+        )
+
+
+def load_draft(user_id, db_path=DB_PATH):
+    """Brouillon du questionnaire refait ({question_id: réponse}), ou None."""
+    with get_connection(db_path) as conn:
+        row = conn.execute("SELECT draft_answers FROM users WHERE id = ?", (user_id,)).fetchone()
+    return json.loads(row["draft_answers"]) if row and row["draft_answers"] else None
+
+
+def save_draft(user_id, draft, db_path=DB_PATH):
+    """Enregistre le brouillon ; None l'efface."""
+    value = None if draft is None else json.dumps(draft, ensure_ascii=False)
+    with get_connection(db_path) as conn:
+        conn.execute("UPDATE users SET draft_answers = ? WHERE id = ?", (value, user_id))
+
+
 def load_answers(user_id, db_path=DB_PATH):
     """{question_id: réponse} de l'utilisateur."""
     with get_connection(db_path) as conn:
@@ -234,6 +261,17 @@ def parse_day(value):
         raise ValueError("Cette date n'est pas valide.") from None
 
 
+def check_dates(start, end=None, today=None):
+    """Règles de saisie : début ≤ fin ≤ aujourd'hui, début jamais dans le futur."""
+    today = today or date.today()
+    if end is not None and end < start:
+        raise ValueError("La date de fin ne peut pas précéder la date de début.")
+    if end is not None and end > today:
+        raise ValueError("La date de fin ne peut pas être dans le futur.")
+    if start > today:
+        raise ValueError("La date de début ne peut pas être dans le futur.")
+
+
 def now_iso():
     return datetime.now().isoformat(timespec="seconds")
 
@@ -268,8 +306,7 @@ def start_reading(user_id, book_id, start_date, today=None, db_path=DB_PATH):
     False si le livre est déjà commencé ou terminé ; ValueError si la date est invalide.
     """
     day = parse_day(start_date)
-    if day > (today or date.today()):
-        raise ValueError("La date de début ne peut pas être dans le futur.")
+    check_dates(day, today=today)
     reading = get_reading(user_id, book_id, db_path)
     if reading and reading["status"] != TO_READ:
         return False
@@ -287,13 +324,17 @@ def start_reading(user_id, book_id, start_date, today=None, db_path=DB_PATH):
             "UPDATE readings SET start_date = ?, rank = NULL, updated_at = ?"
             " WHERE id = ? AND start_date IS NULL", (day.isoformat(), now, reading["id"]))
         if updated.rowcount:
-            # La pile se resserre : les livres suivants avancent d'un rang (ordre croissant
-            # pour ne jamais violer l'unicité du rang).
-            later = conn.execute("SELECT id FROM readings WHERE user_id = ? AND rank > ?"
-                                 " ORDER BY rank", (user_id, reading["rank"])).fetchall()
-            for row in later:
-                conn.execute("UPDATE readings SET rank = rank - 1 WHERE id = ?", (row["id"],))
+            close_gap(conn, user_id, reading["rank"])
     return bool(updated.rowcount)
+
+
+def close_gap(conn, user_id, rank):
+    """La pile se resserre après le départ du rang rank : les livres suivants avancent
+    d'un rang (ordre croissant pour ne jamais violer l'unicité du rang)."""
+    later = conn.execute("SELECT id FROM readings WHERE user_id = ? AND rank > ?"
+                         " ORDER BY rank", (user_id, rank)).fetchall()
+    for row in later:
+        conn.execute("UPDATE readings SET rank = rank - 1 WHERE id = ?", (row["id"],))
 
 
 def finish_reading(user_id, book_id, end_date, today=None, db_path=DB_PATH):
@@ -305,10 +346,7 @@ def finish_reading(user_id, book_id, end_date, today=None, db_path=DB_PATH):
     reading = get_reading(user_id, book_id, db_path)
     if reading is None or reading["status"] != READING:
         return False
-    if day < date.fromisoformat(reading["start_date"]):
-        raise ValueError("La date de fin ne peut pas précéder la date de début.")
-    if day > (today or date.today()):
-        raise ValueError("La date de fin ne peut pas être dans le futur.")
+    check_dates(date.fromisoformat(reading["start_date"]), day, today)
     with get_connection(db_path) as conn:
         updated = conn.execute(
             "UPDATE readings SET end_date = ?, updated_at = ? WHERE id = ? AND end_date IS NULL",
@@ -323,16 +361,115 @@ LIST_ORDER = {
 }
 
 
+def query_readings(sql, params, db_path=DB_PATH):
+    """Lectures (avec titre, auteurs et couverture du livre) choisies par la clause sql."""
+    with get_connection(db_path) as conn:
+        rows = conn.execute(
+            "SELECT r.*, b.title, b.authors, b.isbn, b.thumbnail FROM readings r"
+            f" JOIN books b ON b.id = r.book_id {sql}", params).fetchall()
+    return [dict(row, status=reading_status(row),
+                 authors=json.loads(row["authors"]) if row["authors"] else []) for row in rows]
+
+
 def list_readings(user_id, status=None, db_path=DB_PATH):
     """Lectures de l'utilisateur avec le titre, les auteurs et la couverture du livre.
 
     status : TO_READ (par rang), READING ou FINISHED (plus récent d'abord), None = toutes.
     """
     where, order = LIST_ORDER[status] if status else ("1", "r.updated_at DESC, r.id DESC")
+    return query_readings(f"WHERE r.user_id = ? AND {where} ORDER BY {order}", (user_id,),
+                          db_path)
+
+
+def find_reading(user_id, reading_id, db_path=DB_PATH):
+    """Lecture d'id reading_id si elle appartient à l'utilisateur, sinon None."""
+    rows = query_readings("WHERE r.id = ? AND r.user_id = ?", (reading_id, user_id), db_path)
+    return rows[0] if rows else None
+
+
+def count_readings(user_id, db_path=DB_PATH):
+    """{TO_READ: n, READING: n, FINISHED: n}."""
+    counts = {TO_READ: 0, READING: 0, FINISHED: 0}
+    for reading in list_readings(user_id, db_path=db_path):
+        counts[reading["status"]] += 1
+    return counts
+
+
+# --- Bibliothèque : pile, retrait, dates, avis --------------------------------------------
+
+def move_in_pile(user_id, reading_id, step, db_path=DB_PATH):
+    """Échange le livre avec son voisin de pile : step = -1 (monter) ou +1 (descendre).
+
+    False s'il n'est pas dans la pile ou déjà en bout de pile.
+    """
     with get_connection(db_path) as conn:
-        rows = conn.execute(
-            "SELECT r.*, b.title, b.authors, b.isbn, b.thumbnail FROM readings r"
-            f" JOIN books b ON b.id = r.book_id WHERE r.user_id = ? AND {where}"
-            f" ORDER BY {order}", (user_id,)).fetchall()
-    return [dict(row, status=reading_status(row),
-                 authors=json.loads(row["authors"]) if row["authors"] else []) for row in rows]
+        row = conn.execute("SELECT rank FROM readings WHERE id = ? AND user_id = ?"
+                           " AND rank IS NOT NULL", (reading_id, user_id)).fetchone()
+        if row is None:
+            return False
+        rank = row["rank"]
+        other = conn.execute("SELECT id FROM readings WHERE user_id = ? AND rank = ?",
+                             (user_id, rank + step)).fetchone()
+        if other is None:
+            return False
+        # Rang libéré d'abord : l'unicité (user_id, rank) n'est jamais violée.
+        conn.execute("UPDATE readings SET rank = NULL WHERE id = ?", (reading_id,))
+        conn.execute("UPDATE readings SET rank = ? WHERE id = ?", (rank, other["id"]))
+        conn.execute("UPDATE readings SET rank = ? WHERE id = ?", (rank + step, reading_id))
+    return True
+
+
+def remove_reading(user_id, reading_id, db_path=DB_PATH):
+    """Supprime la lecture (avec sa note et son avis) ; la renvoie, ou None si absente."""
+    reading = find_reading(user_id, reading_id, db_path)
+    if reading is None:
+        return None
+    with get_connection(db_path) as conn:
+        conn.execute("DELETE FROM readings WHERE id = ?", (reading_id,))
+        if reading["rank"] is not None:
+            close_gap(conn, user_id, reading["rank"])
+    return reading
+
+
+def update_dates(user_id, reading_id, start_date, end_date=None, today=None, db_path=DB_PATH):
+    """Modifie le début (lecture en cours) ou le début et la fin (lecture terminée), avec
+    les mêmes règles qu'à la saisie. False si la lecture n'est ni en cours ni terminée."""
+    reading = find_reading(user_id, reading_id, db_path)
+    if reading is None or reading["status"] == TO_READ:
+        return False
+    start = parse_day(start_date)
+    end = parse_day(end_date) if reading["status"] == FINISHED else None
+    check_dates(start, end, today)
+    with get_connection(db_path) as conn:
+        conn.execute("UPDATE readings SET start_date = ?, end_date = ?, updated_at = ?"
+                     " WHERE id = ?",
+                     (start.isoformat(), end and end.isoformat(), now_iso(), reading_id))
+    return True
+
+
+COMMENT_MAX = 2000
+
+
+def save_review(user_id, reading_id, rating, comment, db_path=DB_PATH):
+    """Enregistre la note (1 à 5, ou None = pas de note) et le commentaire privé d'une
+    lecture terminée ; remplace l'avis précédent. False si la lecture n'est pas terminée."""
+    if rating is not None and rating not in range(1, 6):
+        raise ValueError("La note doit être comprise entre 1 et 5.")
+    comment = (comment or "").strip() or None
+    if comment and len(comment) > COMMENT_MAX:
+        raise ValueError(f"Ton commentaire dépasse {COMMENT_MAX} caractères.")
+    reading = find_reading(user_id, reading_id, db_path)
+    if reading is None or reading["status"] != FINISHED:
+        return False
+    with get_connection(db_path) as conn:
+        conn.execute("UPDATE readings SET rating = ?, comment = ?, updated_at = ? WHERE id = ?",
+                     (rating, comment, now_iso(), reading_id))
+    return True
+
+
+def list_ratings(user_id, db_path=DB_PATH):
+    """[(book_id, note)] des lectures notées de l'utilisateur."""
+    with get_connection(db_path) as conn:
+        rows = conn.execute("SELECT book_id, rating FROM readings WHERE user_id = ?"
+                            " AND rating IS NOT NULL ORDER BY id", (user_id,)).fetchall()
+    return [(row["book_id"], row["rating"]) for row in rows]

@@ -37,8 +37,7 @@
       </form>
       {% else %}
       <p class="muted small">Lu du {{ reading.start_date }} au {{ reading.end_date }}.</p>
-      {# Page « Ma bibliothèque » à venir. #}
-      <a class="btn btn-primary" href="/bibliotheque#livre-{{ book.id }}">Voir mon avis</a>
+      <a class="btn btn-primary" href="{{ url_for('library.avis', reading_id=reading.id) }}">Voir mon avis</a>
       {% endif %}
     </section>
 

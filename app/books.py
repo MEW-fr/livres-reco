@@ -93,11 +93,12 @@ def fiche(book_id):
 
 
 # --- Actions de lecture ----------------------------------------------------------------
-# Chaque action revient sur la fiche (POST puis redirection) : une double soumission ne
-# crée jamais de doublon, la base refusant un second suivi du même livre.
+# Chaque action revient sur la page d'origine (champ next) ou la fiche (POST puis
+# redirection) : une double soumission ne crée jamais de doublon, la base refusant un
+# second suivi du même livre. Terminer mène à la page d'avis.
 
 def back_to(book_id):
-    return redirect(url_for("books.fiche", book_id=book_id))
+    return user_filters.back(url_for("books.fiche", book_id=book_id))
 
 
 @bp.route("/livre/<int:book_id>/pile", methods=["POST"])
@@ -130,6 +131,8 @@ def terminer(book_id):
         if db.finish_reading(g.user["id"], book_id, request.form.get("date"),
                              db_path=db_path()):
             flash("Bravo, un livre de plus de terminé !", "success")
+            reading = db.get_reading(g.user["id"], book_id, db_path())
+            return redirect(url_for("library.avis", reading_id=reading["id"]))
     except ValueError as error:
         flash(str(error), "error")
     return back_to(book_id)

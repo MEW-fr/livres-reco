@@ -20,3 +20,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (event.key === "Escape" && !panel.hidden) toggle(false);
   });
 });
+
+// Page d'avis : valeur numérique de la note affichée à côté des cœurs.
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll("[data-rating]").forEach((field) => {
+    const output = field.querySelector("[data-rating-value]");
+    field.addEventListener("change", (event) => {
+      output.textContent = event.target.value ? `${event.target.value}/5` : "Sans note";
+    });
+  });
+});

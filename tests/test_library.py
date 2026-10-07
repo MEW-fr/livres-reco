@@ -104,7 +104,8 @@ def test_parcours_web_et_fin_invalide(app, client, path):
 
     page = client.post("/livre/1/terminer", data={"date": today.isoformat()},
                        follow_redirects=True).get_data(as_text=True)
-    assert "Voir mon avis" in page
+    assert "TON AVIS" in page  # Terminer mène à la page d'avis
+    assert "Voir mon avis" in client.get("/livre/1").get_data(as_text=True)
 
 
 def test_propriete_des_lectures(app, client, path):

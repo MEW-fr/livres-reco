@@ -4,11 +4,8 @@
 {% block body %}
 <main class="profile-wrap">
   <section class="card profile-card">
-    {% if g.user.is_demo %}
-    <div class="notice" role="note"><p><strong>Compte de démonstration</strong> : ce lecteur et ses lectures sont fictifs.</p></div>
-    {% endif %}
     <span class="profile-orbit" aria-hidden="true"></span>
-    {% if created %}<span class="badge">PROFIL CRÉÉ</span>{% endif %}
+    <span class="badge">PROFIL CRÉÉ</span>
     <p class="eyebrow">TON PROFIL DOMINANT</p>
     <h1 class="profile-label">{{ profile.label }}</h1>
     <p class="profile-description">{{ profile.label_description }}</p>

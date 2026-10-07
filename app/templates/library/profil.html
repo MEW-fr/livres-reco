@@ -1,0 +1,65 @@
+{% extends "layout.html" %}
+{% block title %}Mon profil · Et maintenant, je lis quoi ?{% endblock %}
+{% block content %}
+{% if g.user.is_demo %}
+<div class="notice" role="note"><p><strong>Compte de démonstration</strong> : ce lecteur et ses lectures sont fictifs.</p></div>
+{% endif %}
+
+<section class="card profile-card profile-page">
+  <span class="profile-orbit" aria-hidden="true"></span>
+  <p class="eyebrow">TON PROFIL DOMINANT · FAMILLE {{ profile.family|upper }}</p>
+  <h1 class="profile-label">{{ profile.label }}</h1>
+  <p class="profile-description">{{ profile.label_description }}</p>
+  <ul class="tags">
+    {% for tag in profile.label_tags %}<li class="tag">{{ tag }}</li>{% endfor %}
+  </ul>
+  <p class="muted small">Confiance du profil : <strong>{{ confidence }} %</strong> (part des questions qui comptent dans le calcul)</p>
+
+  <div class="profile-stats">
+    <a class="stat" href="{{ url_for('library.bibliotheque', onglet='en-cours') }}"><strong>{{ counts['en cours'] }}</strong> en cours</a>
+    <a class="stat" href="{{ url_for('library.bibliotheque', onglet='termines') }}"><strong>{{ counts['terminé'] }}</strong> terminé{{ 's' if counts['terminé'] > 1 }}</a>
+  </div>
+
+  {% if draft %}
+  <div class="notice" role="status">
+    <p>Tu as commencé à refaire le questionnaire : ton profil actuel reste actif jusqu'à la dernière question.</p>
+    <div class="section-actions">
+      <a class="btn btn-primary btn-small" href="{{ url_for('survey.refaire') }}">Reprendre</a>
+      <form method="post" action="{{ url_for('survey.abandonner') }}">
+        <button class="btn btn-ghost btn-small" type="submit">Abandonner le brouillon</button>
+      </form>
+    </div>
+  </div>
+  {% else %}
+  <a class="btn btn-lime" href="{{ url_for('survey.refaire') }}">↻ Refaire le questionnaire</a>
+  {% endif %}
+</section>
+
+<div class="profile-columns">
+  <section class="card section-card">
+    <p class="eyebrow">TES PRÉFÉRENCES DÉCLARÉES</p>
+    {% if declared %}
+    <dl class="facts">
+      {% for title, labels in declared %}<dt>{{ title }}</dt><dd>{{ labels|join(', ') }}</dd>{% endfor %}
+    </dl>
+    {% else %}
+    <p class="muted">Tu n'as déclaré ni genre, ni thème, ni ambiance préférés.</p>
+    {% endif %}
+
+    {% if trends %}
+    <h2 class="section-title">Tendances observées</h2>
+    <p class="muted small">Ce que tes notes ont appris à ton profil, par rapport à tes réponses.</p>
+    <ul class="tags">
+      {% for t in trends %}<li class="tag">{{ t }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  <section class="card section-card">
+    <p class="eyebrow">TES RÉPONSES AU QUESTIONNAIRE</p>
+    <dl class="answers">
+      {% for question, text in answers %}<dt>{{ question }}</dt><dd>{{ text }}</dd>{% endfor %}
+    </dl>
+  </section>
+</div>
+{% endblock %}

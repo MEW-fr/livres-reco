@@ -45,14 +45,21 @@
 
     <div class="survey-actions">
       {% if n > 1 %}
-      <a class="btn btn-ghost" href="{{ url_for('survey.question', n=n - 1) }}">← Retour</a>
+      <a class="btn btn-ghost" href="{{ url_for(endpoint, n=n - 1) }}">← Retour</a>
       {% endif %}
       <button class="btn btn-primary btn-continue" type="submit"{% if not selected %} disabled{% endif %}>
         {{ 'Valider' if n == total else 'Continuer' }} →
       </button>
     </div>
   </form>
+  {% if retake %}
+  <p class="saved-note">✓ Brouillon enregistré : ton profil actuel ne change qu'à la validation de la question {{ total }}.</p>
+  <form method="post" action="{{ url_for('survey.abandonner') }}" class="center">
+    <button class="btn btn-ghost btn-small" type="submit">Abandonner le brouillon</button>
+  </form>
+  {% else %}
   <p class="saved-note">✓ Tes réponses sont enregistrées automatiquement.</p>
+  {% endif %}
 </main>
 {% endblock %}
 {% block scripts %}

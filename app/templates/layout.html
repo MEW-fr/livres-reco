@@ -30,9 +30,8 @@
     <nav class="nav">
       <a class="nav-item{% if active == 'accueil' %} active{% endif %}" href="{{ url_for('main.accueil') }}">⌂ Accueil</a>
       <a class="nav-item{% if active == 'explorer' %} active{% endif %}" href="{{ url_for('main.explorer') }}">✦ Explorer</a>
-      {# Page « Ma bibliothèque » à venir. #}
-      <span class="nav-item disabled" title="Bientôt disponible">▤ Ma bibliothèque <span class="nav-badge">{{ library_count or 0 }}</span></span>
-      <a class="nav-item" href="{{ url_for('survey.profil') }}">◎ Mon profil</a>
+      <a class="nav-item{% if active == 'bibliotheque' %} active{% endif %}" href="{{ url_for('library.bibliotheque') }}">▤ Ma bibliothèque <span class="nav-badge">{{ library_count or 0 }}</span></a>
+      <a class="nav-item{% if active == 'profil' %} active{% endif %}" href="{{ url_for('library.profil') }}">◎ Mon profil</a>
     </nav>
     <div class="profile-mini">
       <span class="eyebrow-small">TON PROFIL</span>
