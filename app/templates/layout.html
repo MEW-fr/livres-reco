@@ -29,7 +29,9 @@
   <aside class="sidebar">
     <nav class="nav">
       <a class="nav-item{% if active == 'accueil' %} active{% endif %}" href="{{ url_for('main.accueil') }}">⌂ Accueil</a>
-      <span class="nav-item disabled" title="Bientôt disponible">▤ Ma bibliothèque</span>
+      <a class="nav-item{% if active == 'explorer' %} active{% endif %}" href="{{ url_for('main.explorer') }}">✦ Explorer</a>
+      {# Page « Ma bibliothèque » à venir. #}
+      <span class="nav-item disabled" title="Bientôt disponible">▤ Ma bibliothèque <span class="nav-badge">{{ library_count or 0 }}</span></span>
       <span class="nav-item disabled" title="Bientôt disponible">◎ Mon profil</span>
     </nav>
     <div class="profile-mini">

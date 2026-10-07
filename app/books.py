@@ -8,8 +8,7 @@ from flask import (Blueprint, abort, current_app, flash, g, redirect, render_tem
 
 from app import filters as user_filters
 from app.auth import db_path, profile_required
-from src import db, engine
-from src.profile import explain, novelty_for, score_book
+from src import db, engine, home
 from src.questions import AMBIANCE_LABELS, CATEGORY_LABELS, GROUPS, THEME_LABELS
 
 bp = Blueprint("books", __name__)
@@ -65,22 +64,14 @@ def recherche():
 
 # --- Fiche livre -----------------------------------------------------------------------
 
-def recommendation_reason(book):
-    """Phrase « Recommandé pour… » du barème, pour un livre venu de « Pour toi »."""
-    profile = db.load_profile(g.user["id"], db_path())
-    read_ids = [r["book_id"] for r in db.list_readings(g.user["id"], db.FINISHED, db_path())]
-    N = novelty_for(profile, [book], read_ids, db_path=db_path())[book["id"]]
-    _, detail = score_book(profile, book, N)
-    return explain(profile, book, detail)
-
-
 @bp.route("/livre/<int:book_id>")
 @profile_required
 def fiche(book_id):
     book = get_book(book_id)
     query = request.args.get("q", "").strip()
-    if request.args.get("from") == "pour-toi":
-        reason = recommendation_reason(book)
+    source = request.args.get("from")
+    if source in home.SOURCES:
+        reason = home.reason(g.user, book, source, db_path=db_path())
     elif query:
         reason = f"Correspond à ta recherche « {query} »."
     else:
