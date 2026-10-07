@@ -255,7 +255,41 @@ def test_historique_refus_et_force(path):
 
     seed.history("mathilde", path, today=TODAY, out=quiet)
     first = readings()
-    with pytest.raises(seed.SeedError, match="--force"):
+    with pytest.raises(seed.SeedError, match="Refusé.*--force"):
         seed.history("mathilde", path, today=TODAY, out=quiet)
     seed.history("mathilde", path, force=True, today=TODAY, out=quiet)
     assert readings() == first  # même graine (dérivée du pseudo) : même historique
+
+
+def test_historique_deux_lancements_qui_se_chevauchent(path, monkeypatch):
+    """Le second lancement démarre avant que le premier ait écrit : il voit 0 lecture au
+    début, mais doit être refusé à l'écriture sans effacer l'historique du premier."""
+    seed.run(path, today=TODAY, out=quiet)
+    me = real_user(path)
+    plan = seed.plan_history
+
+    def first_run_finishes_meanwhile(*args, **kwargs):
+        result = plan(*args, **kwargs)
+        monkeypatch.setattr(seed, "plan_history", plan)
+        seed.history("mathilde", path, today=TODAY, out=quiet)  # premier lancement
+        return result
+
+    monkeypatch.setattr(seed, "plan_history", first_run_finishes_meanwhile)
+    with pytest.raises(seed.SeedError, match="Refusé.*15 lecture"):
+        seed.history("mathilde", path, today=TODAY, out=quiet)
+    assert len(db.list_readings(me, db_path=path)) == 15
+
+
+def test_historique_cli_deux_fois(path, monkeypatch, capsys):
+    """python -m src.seed --historique lancé deux fois de suite : le second est refusé."""
+    seed.run(path, today=TODAY, out=quiet)
+    me = real_user(path)
+    monkeypatch.setattr(seed, "DB_PATH", path)
+    monkeypatch.setattr(seed.history, "__defaults__",
+                        (path,) + seed.history.__defaults__[1:])
+    assert seed.main(["--historique", "mathilde"]) == 0
+    before = [dict(r) for r in db.list_readings(me, db_path=path)]
+    capsys.readouterr()
+    assert seed.main(["--historique", "mathilde"]) == 1
+    assert "Refusé" in capsys.readouterr().out
+    assert [dict(r) for r in db.list_readings(me, db_path=path)] == before

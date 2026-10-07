@@ -618,6 +618,16 @@ def plan_history(user, profile, today, rng, db_path=DB_PATH):
     return {"rows": rows, "shared": shared, "moment": moment[0] if moment else None}
 
 
+def refuse_if_readings(conn, user, force):
+    """Nombre de lectures du compte ; SeedError s'il en a déjà, sauf force."""
+    count = conn.execute("SELECT COUNT(*) FROM readings WHERE user_id = ?",
+                         (user["id"],)).fetchone()[0]
+    if count and not force:
+        raise SeedError(f"Refusé : « {user['username']} » a déjà {count} lecture(s). "
+                        "Relance avec --force pour les remplacer.")
+    return count
+
+
 def history(pseudo, db_path=DB_PATH, force=False, today=None, out=print):
     """Historique de lecture cohérent avec le profil d'un vrai compte (non démo), puis
     recalcul des tendances observées (save_learned). Refuse si le compte a déjà des
@@ -631,14 +641,16 @@ def history(pseudo, db_path=DB_PATH, force=False, today=None, out=print):
     profile = db.load_profile(user["id"], db_path)
     if profile is None:
         raise SeedError(f"« {pseudo} » n'a pas encore rempli le questionnaire.")
-    existing = db.list_readings(user["id"], db_path=db_path)
-    if existing and not force:
-        raise SeedError(f"« {pseudo} » a déjà {len(existing)} lecture(s) : relance avec --force "
-                        "pour les remplacer.")
+    with db.get_connection(db_path) as conn:
+        refuse_if_readings(conn, user, force)  # refus rapide, avant le calcul du plan
 
     rng = history_rng(pseudo)
     plan = plan_history(user, profile, today, rng, db_path)
+    # Vérification refaite sous verrou d'écriture : un autre lancement a pu écrire pendant
+    # le calcul du plan (sinon il serait effacé et le second lancement réussirait aussi).
     with db.get_connection(db_path) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        replaced = refuse_if_readings(conn, user, force)
         conn.execute("DELETE FROM readings WHERE user_id = ?", (user["id"],))
         for r in plan["rows"]:
             last = r["end"] or r["start"] or r["added"]
@@ -657,8 +669,8 @@ def history(pseudo, db_path=DB_PATH, force=False, today=None, out=print):
     out("  partagés avec sa famille : "
         + (" ; ".join(b["title"] for b in plan["shared"]) or "aucun"))
     out(f"  du moment : {plan['moment']['title'] if plan['moment'] else 'aucun'}")
-    if existing:
-        out(f"  {len(existing)} lecture(s) précédente(s) remplacée(s) (--force)")
+    if replaced:
+        out(f"  {replaced} lecture(s) précédente(s) remplacée(s) (--force)")
     return plan
 
 
