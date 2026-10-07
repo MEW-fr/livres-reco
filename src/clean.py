@@ -44,13 +44,24 @@ NONFICTION_TITLE_PATTERNS = [
     "dans le roman", "le roman de", "le roman au", "roman et", "litterature", "anthologies?",
     "etudes?", "histoire du", "histoire de la", "siecles?", r"\d{4} \d{4}",
     "revue", "bulletin", "regards", "critiques?", "catalogue", "exposition", "actes",
-    "colloque", "cahiers", "special", "numero", "et son", "au cinema", "au theatre",
+    "colloque", "cahiers", "special", "numero", "au cinema", "au theatre",
     "fiction et",
 ]
 NONFICTION_TITLE_RE = re.compile(r"\b(" + "|".join(NONFICTION_TITLE_PATTERNS) + r")\b")
+# Mentions entre crochets ou parenthèses (éventuellement non fermées) : "[Nouv. éd. revue".
+TITLE_BRACKETS_RE = re.compile(r"\[[^\]]*(\]|$)|\([^)]*(\)|$)")
+# Vocabulaire d'étude dans la description (pluriel accepté) : 2 expressions distinctes
+# suffisent pour écarter un livre de catégorie fiction.
+STUDY_TERMS = [
+    "analyse", "etude", "ouvrage collectif", "actes du", "cet ouvrage", "ce volume",
+    "chapitre", "bibliographie", "approche", "perspective", "corpus", "contribution",
+    "universitaire", "chercheur", "historiographie", "critique litteraire",
+]
+STUDY_TERM_RES = [re.compile(rf"\b{term}s?\b") for term in STUDY_TERMS]
+MIN_STUDY_TERMS = 2
 
 # Contrôle de langue : part minimale de mots vides français dans la description.
-MIN_FRENCH_STOPWORD_RATIO = 0.08
+MIN_FRENCH_STOPWORD_RATIO = 0.15
 
 # Dédoublonnage secondaire : mots d'édition retirés du titre normalisé.
 EDITION_WORDS_RE = re.compile(
@@ -204,7 +215,17 @@ def is_nonfiction_in_fiction(book):
         return True
     if NONFICTION_GOOGLE_CATEGORIES & set(categories):
         return True
-    return bool(NONFICTION_TITLE_RE.search(normalize_text(book["info"]["title"])))
+    title = TITLE_BRACKETS_RE.sub(" ", book["info"]["title"])
+    return bool(NONFICTION_TITLE_RE.search(normalize_text(title)))
+
+
+def has_study_vocabulary(book):
+    """Livre de catégorie fiction dont la description emploie un vocabulaire
+    d'étude (au moins 2 expressions distinctes de STUDY_TERMS)."""
+    if main_category(book) in NONFICTION_MAIN_CATEGORIES:
+        return False
+    text = normalize_text(book["description"])
+    return sum(bool(r.search(text)) for r in STUDY_TERM_RES) >= MIN_STUDY_TERMS
 
 
 def _has_valid_pages(info):
@@ -222,6 +243,7 @@ FILTERS = [
     ("année non parsable", lambda b: parse_year(b["info"].get("publishedDate")) is not None),
     ("titre exclu (coffret, guide…)", lambda b: not EXCLUDED_TITLE_RE.search(normalize_text(b["info"]["title"]))),
     ("non-fiction en catégorie fiction", lambda b: not is_nonfiction_in_fiction(b)),
+    ("vocabulaire d'étude", lambda b: not has_study_vocabulary(b)),
 ]
 
 
