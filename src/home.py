@@ -7,19 +7,20 @@
 - univers : 3 univers tirés des attributs les mieux pondérés du profil.
 - renouveler : réordonne les meilleurs en pénalisant les livres déjà proposés.
 - reason : phrase d'explication sur la fiche, selon la section d'origine.
-- affinity / affinity_for : badge de compatibilité tiré du score S.
+- scores_for / affinity / affinity_level : badge « S % d'affinité » de toutes les cartes.
 """
 
 import dataclasses
 import json
+import math
 from collections import Counter
 from datetime import date, timedelta
 
 from src import db, engine
 from src.db import DB_PATH
 from src.engine import book_categories, join_fr
-from src.profile import (ECLECTIC, FAMILY_OF, GENRE_LABELS, explain, novelty_for, recommend,
-                         score_book)
+from src.profile import (ECLECTIC, FAMILY_OF, GENRE_LABELS, MAX_PER_CATEGORY, explain,
+                         novelty_for, recommend, score_book)
 from src.questions import AMBIANCE_LABELS, CATEGORY_LABELS, THEME_LABELS
 
 MIN_READERS = 5     # lecteurs requis pour afficher une section communautaire
@@ -27,9 +28,8 @@ WEEK_DAYS = 7       # popularité : start_date entre J-6 et J
 RENEW_POOL = 24     # « Renouveler » puise dans les 24 meilleurs
 RENEW_PENALTY = 100.0  # points retirés au score S à chaque proposition précédente
 UNIVERSES = 3
-# Badge de compatibilité : (seuil minimal de S, libellé), du plus fort au plus faible.
-AFFINITIES = ((80, "Très forte affinité"), (60, "Forte affinité"), (40, "Bonne affinité"),
-              (float("-inf"), "À découvrir"))
+# Couleur du badge d'affinité : seuils de S arrondi (niveau 1 = le plus fort).
+AFFINITY_LEVELS = (80, 60, 40)
 
 FAMILY_CATEGORIES = {}
 for _cat, _family in FAMILY_OF.items():
@@ -181,13 +181,14 @@ def group_popularity(lecteurs):
     return {b["book"]["id"]: 100 * b["readers"] / top for b in lecteurs["books"]} if top else {}
 
 
-def pour_toi(user, n=5, filters=None, exclude=(), db_path=DB_PATH, group_pop=None):
+def pour_toi(user, n=5, filters=None, exclude=(), db_path=DB_PATH, group_pop=None,
+             max_per_category=MAX_PER_CATEGORY):
     """profile.recommend hors bibliothèque (et hors exclude)."""
     if group_pop is None:
         group_pop = group_popularity(lecteurs_comme_toi(user, db_path))
     exclude = library_ids(user["id"], db_path) | set(exclude)
     return recommend(profile_of(user), n, with_attribute(filters, exclude),
-                     finished_ids(user["id"], db_path), group_pop, db_path)
+                     finished_ids(user["id"], db_path), group_pop, db_path, max_per_category)
 
 
 def family_selection(user, filters=None, exclude=(), db_path=DB_PATH):
@@ -350,22 +351,35 @@ def univers(user, n=8, filters=None, db_path=DB_PATH):
 # --- Explication sur la fiche ------------------------------------------------------------
 
 SOURCES = ("pour-toi", "lecteurs", "populaires", "famille", "univers")
-RECOMMENDED = ("pour-toi", "univers")  # sections tirées de recommend : badge d'affinité
+
+
+def scores_for(user, books, db_path=DB_PATH):
+    """{id: S} de livres quelconques contre le profil de user, en une passe : nouveauté
+    et popularité de groupe calculées une fois, comme dans recommend."""
+    books = list({b["id"]: b for b in books}.values())
+    if not books:
+        return {}
+    profile = profile_of(user)
+    novelties = novelty_for(profile, books, finished_ids(user["id"], db_path), db_path=db_path)
+    group_pop = group_popularity(lecteurs_comme_toi(user, db_path))
+    year = date.today().year
+    return {b["id"]: score_book(profile, b, novelties[b["id"]], group_pop.get(b["id"]), year)[0]
+            for b in books}
+
+
+def rounded(S):
+    return math.floor(S + 0.5)
 
 
 def affinity(S):
-    """Libellé du badge de compatibilité pour un score S (None si pas de score)."""
-    if S is None:
-        return None
-    return next(label for threshold, label in AFFINITIES if S >= threshold)
+    """Texte du badge : « S % d'affinité », S arrondi (None si pas de score)."""
+    return None if S is None else f"{rounded(S)} % d'affinité"
 
 
-def affinity_for(user, book, db_path=DB_PATH):
-    """Badge de la fiche : S calculé comme dans recommend (nouveauté, popularité de groupe)."""
-    profile = profile_of(user)
-    N = novelty_for(profile, [book], finished_ids(user["id"], db_path), db_path=db_path)[book["id"]]
-    pop = group_popularity(lecteurs_comme_toi(user, db_path)).get(book["id"])
-    return affinity(score_book(profile, book, N, pop)[0])
+def affinity_level(S):
+    """Niveau de couleur du badge : 1 (S ≥ 80), 2 (≥ 60), 3 (≥ 40), sinon 4."""
+    return next((i for i, t in enumerate(AFFINITY_LEVELS, 1) if rounded(S) >= t),
+                len(AFFINITY_LEVELS) + 1)
 
 
 def reason(user, book, source, today=None, db_path=DB_PATH):

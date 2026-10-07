@@ -513,6 +513,11 @@ input:focus { outline: none; border-color: var(--violet); }
   white-space: nowrap;
   box-shadow: 0 2px 0 #B6D33F;
 }
+/* Couleur selon S : ≥ 80 citron, ≥ 60 violet, ≥ 40 rose, en dessous neutre */
+.affinity-2 { background: var(--violet-soft); color: var(--violet-dark); box-shadow: 0 2px 0 #D3CCFF; }
+.affinity-3 { background: #FFE3EB; color: #C2385F; box-shadow: 0 2px 0 #FFC2D3; }
+.affinity-4 { background: var(--white); color: var(--muted); box-shadow: 0 2px 0 var(--line); }
+.shelf-body .affinity { margin: 4px 0 2px; }
 .book-card .affinity { position: absolute; top: 8px; left: 8px; z-index: 1; max-width: calc(100% - 16px); overflow: hidden; text-overflow: ellipsis; }
 .book-page-body .affinity { margin-bottom: 12px; }
 .book-link { color: var(--encre); text-decoration: none; }

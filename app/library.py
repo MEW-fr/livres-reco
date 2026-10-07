@@ -5,7 +5,7 @@ from datetime import date
 from flask import (Blueprint, abort, flash, g, redirect, render_template, request, url_for)
 
 from app.auth import db_path, profile_required
-from src import db, stats
+from src import db, engine, home, stats
 from src.profile import save_learned
 from src.questions import AMBIANCE_LABELS, CATEGORY_LABELS, THEME_LABELS
 
@@ -47,10 +47,19 @@ def bibliotheque():
     counts = db.count_readings(g.user["id"], db_path())
     tabs = [{"slug": slug, "label": label, "count": counts[status]}
             for slug, (status, label) in TABS.items()]
+    readings = db.list_readings(g.user["id"], TABS[tab][0], db_path())
     return render_template("library/bibliotheque.html", active="bibliotheque", tab=tab,
-                           tabs=tabs, excerpt=EXCERPT,
-                           readings=db.list_readings(g.user["id"], TABS[tab][0], db_path()),
+                           tabs=tabs, excerpt=EXCERPT, readings=readings,
+                           scores=home.scores_for(g.user, shelf_books(readings), db_path()),
                            today=date.today().isoformat())
+
+
+def shelf_books(readings):
+    """Livres complets des lectures (index, sinon base pour un livre masqué)."""
+    index = engine.get_index(db_path())
+    books = [index.books[index.row_of[r["book_id"]]] if r["book_id"] in index.row_of
+             else engine.load_book(r["book_id"], db_path()) for r in readings]
+    return [b for b in books if b]
 
 
 @bp.route("/lecture/<int:reading_id>/monter", methods=["POST"])

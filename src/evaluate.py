@@ -11,7 +11,8 @@ n'est pas écrasée si elle existe déjà, sauf avec --refaire-humaine.
    sur les profils de démo ; 5 résultats distincts expliqués.
 4. Performance : client de test Flask sur data/books.db, 50 appels par page.
 5. Cohérence humaine : 8 profils de démo (un par famille + 2).
-6. Diversité : catégories distinctes par profil, livres « passe-partout ».
+6. Diversité : catégories distinctes par profil, livres « passe-partout », avant et après
+   la contrainte de profile.diversify (au plus 3 livres de même catégorie).
 
 Usage : python -m src.evaluate [--refaire-humaine]
 """
@@ -30,7 +31,7 @@ from app import filters as user_filters
 from src import db, engine, home
 from src.db import DB_PATH
 from src.engine import normalize
-from src.profile import FAMILIES
+from src.profile import FAMILIES, MAX_PER_CATEGORY
 from src.questions import AMBIANCE_LABELS, CATEGORY_LABELS, QUESTIONS_BY_ID, THEME_LABELS
 from src.stats import MONTHS
 
@@ -43,6 +44,7 @@ SEED = 2026
 N = 5                    # résultats attendus (recherche : rang maximal, recommandations : nombre)
 MIN_BOOKS = 500
 MIN_FOUND = 15           # requêtes réussies sur 20
+TARGET_FOUND = 18        # objectif après la recherche approchée
 SIMILAR_SAMPLE = 30
 CALLS = 50
 MAX_MS, TARGET_MS = 3000, 1000
@@ -132,13 +134,14 @@ def demo_users(db_path=DB_PATH):
         return conn.execute("SELECT * FROM users WHERE is_demo = 1 ORDER BY id").fetchall()
 
 
-def pour_toi(user, db_path=DB_PATH):
+def pour_toi(user, db_path=DB_PATH, max_per_category=MAX_PER_CATEGORY):
     """« Choisis pour toi » tel que l'accueil le calcule : filtres du compte, hors
-    bibliothèque, popularité du groupe (sans l'ordre renouvelé, propre à la session)."""
+    bibliothèque, popularité du groupe (sans l'ordre renouvelé, propre à la session).
+    max_per_category=None : sans la contrainte de diversité (mesure « avant »)."""
     saved = db.get_filters(user["id"], db_path) or user_filters.from_answers(
         db.load_answers(user["id"], db_path))
     flt = user_filters.to_engine(dict(user_filters.DEFAULTS, **saved))
-    return home.pour_toi(user, N, flt, db_path=db_path)
+    return home.pour_toi(user, N, flt, db_path=db_path, max_per_category=max_per_category)
 
 
 # --- 4. Performance -------------------------------------------------------------------------
@@ -229,14 +232,16 @@ def diversity(recos):
     counts = Counter(r["book"]["id"] for results in recos.values() for r in results)
     titles = {r["book"]["id"]: r["book"]["title"] for results in recos.values() for r in results}
     widespread = [(titles[i], c) for i, c in counts.most_common() if c > WIDESPREAD]
+    crowded = sum(1 for results in recos.values() if results and max(Counter(
+        r["book"]["main_category"] for r in results).values()) > MAX_PER_CATEGORY)
     return {"mean": statistics.mean(shares.values()), "min": min(shares.values()),
-            "distinct": len(counts), "widespread": widespread,
+            "distinct": len(counts), "widespread": widespread, "crowded": crowded,
             "top": [(titles[i], c) for i, c in counts.most_common(5)]}
 
 
 # --- Rapport --------------------------------------------------------------------------------
 
-def report(moment, cat, found, similar, recos, failures, perf, human, div):
+def report(moment, cat, found, similar, recos, failures, perf, human, div, before):
     n_found = sum(r["found"] for r in found)
     n_recos = len(recos)
     perf_max = max(p for _, p, _ in perf.values())
@@ -245,7 +250,8 @@ def report(moment, cat, found, similar, recos, failures, perf, human, div):
         ("Catalogue ≥ 500 livres uniques", f"{cat['unique']} livres", verdict(
             cat["unique"] >= MIN_BOOKS)),
         ("Recherche : livre visé dans le top 5 pour ≥ 15/20", f"{n_found}/20",
-         verdict(n_found >= MIN_FOUND)),
+         verdict(n_found >= MIN_FOUND)
+         + (f" (objectif ≥ {TARGET_FOUND} atteint)" if n_found >= TARGET_FOUND else "")),
         ("Livres proches : 5 résultats distincts expliqués", f"{len(similar['failures'])} échec(s) "
          f"sur {similar['tested']}", verdict(not similar["failures"])),
         ("« Choisis pour toi » : 5 résultats expliqués", f"{len(failures)} échec(s) sur "
@@ -256,7 +262,8 @@ def report(moment, cat, found, similar, recos, failures, perf, human, div):
         ("Cohérence humaine ≥ 3/5 par profil", f"{len(human)} profils à juger",
          "⏳ à remplir (docs/evaluation_humaine.md)"),
         ("Diversité (indicatif)", f"{div['mean'] * 100:.0f} % de catégories distinctes en "
-         f"moyenne, {len(div['widespread'])} livre(s) passe-partout", "ℹ️ sans seuil"),
+         f"moyenne (avant contrainte : {before['mean'] * 100:.0f} %), "
+         f"{len(div['widespread'])} livre(s) passe-partout", "ℹ️ sans seuil"),
     ]
 
     out = [
@@ -294,8 +301,10 @@ def report(moment, cat, found, similar, recos, failures, perf, human, div):
         "",
         f"20 requêtes de `tests/fixtures/recherche_20.json`, écrites à partir de livres tirés "
         f"au hasard dans le catalogue (4 par type d'imperfection). Recherche sans filtre, "
-        f"même fonction que `/recherche` (`engine.find_book`). "
-        f"**Score : {n_found}/20** (critère ≥ {MIN_FOUND}).",
+        f"même fonction que `/recherche` (`engine.search_books` : apostrophes typographiques "
+        f"normalisées, résultats exacts puis, sous {engine.MIN_EXACT} exacts, résultats "
+        f"approchés). **Score : {n_found}/20** (critère ≥ {MIN_FOUND}, objectif "
+        f"≥ {TARGET_FOUND}).",
         "",
         table(["Type", "Requête", "Livre visé", "Rang", "Résultats", "Top 5"],
               [(r["type"], f"`{r['requete']}`", r["titre"], r["rank"] or "absent", r["total"],
@@ -348,15 +357,26 @@ def report(moment, cat, found, similar, recos, failures, perf, human, div):
         "",
         "## 6. Diversité",
         "",
-        f"- Part des catégories principales distinctes dans les 5 recommandations : "
-        f"**{div['mean'] * 100:.0f} %** en moyenne sur {n_recos} profils "
-        f"(minimum {div['min'] * 100:.0f} %, soit {round(div['min'] * N)} catégorie(s) sur 5).",
-        f"- Livres distincts recommandés : {div['distinct']} pour {n_recos * N} places.",
-        f"- Livres « passe-partout » (recommandés à plus de {WIDESPREAD} profils) : "
-        f"**{len(div['widespread'])}** ({pct(len(div['widespread']), div['distinct'])} des "
-        f"livres recommandés).",
+        f"`profile.recommend` garde au plus {MAX_PER_CATEGORY} livres de même catégorie "
+        f"principale parmi les {N} recommandations quand le vivier le permet "
+        f"(`profile.diversify`, sinon complété sans contrainte). Mesure sur les {n_recos} "
+        f"profils de démo, sans puis avec cette contrainte :",
         "",
-        "Livres les plus recommandés :",
+        table(["Indicateur", "Avant", "Après"], [
+            ("Catégories distinctes (moyenne)", f"{before['mean'] * 100:.0f} %",
+             f"**{div['mean'] * 100:.0f} %**"),
+            ("Catégories distinctes (minimum)",
+             f"{before['min'] * 100:.0f} % ({round(before['min'] * N)}/5)",
+             f"{div['min'] * 100:.0f} % ({round(div['min'] * N)}/5)"),
+            (f"Profils avec plus de {MAX_PER_CATEGORY} livres d'une même catégorie",
+             before["crowded"], div["crowded"]),
+            ("Livres distincts recommandés", f"{before['distinct']} / {n_recos * N}",
+             f"{div['distinct']} / {n_recos * N}"),
+            (f"Livres « passe-partout » (plus de {WIDESPREAD} profils)",
+             len(before["widespread"]), len(div["widespread"])),
+        ]),
+        "",
+        "Livres les plus recommandés (après) :",
         "",
         table(["Livre", "Profils"], div["top"]),
     ]
@@ -380,9 +400,10 @@ def main(argv):
     perf = performance(users[0]["id"], queries, index)
     human = human_profiles(users)
     div = diversity(recos)
+    before = diversity({u["username"]: pour_toi(u, max_per_category=None) for u in users})
 
-    REPORT.write_text(report(moment, cat, found, similar, recos, failures, perf, human, div),
-                      encoding="utf-8")
+    REPORT.write_text(report(moment, cat, found, similar, recos, failures, perf, human, div,
+                             before), encoding="utf-8")
     print(f"Rapport : {REPORT.relative_to(ROOT)}")
     if HUMAN.exists() and not argv:
         print(f"Grille conservée : {HUMAN.relative_to(ROOT)} (--refaire-humaine pour la "

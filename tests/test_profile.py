@@ -224,6 +224,32 @@ def test_one_book_per_author(db):
     assert len(ids) == 3                  # les livres suivants complètent la liste
 
 
+def test_diversify_trois_par_categorie_si_possible():
+    items = [{"book": book(i, main)} for i, main in enumerate(
+        ["thriller"] * 5 + ["romance", "policier"], 1)]
+    assert [r["book"]["id"] for r in prof.diversify(items, 5)] == [1, 2, 3, 6, 7]
+    # vivier insuffisant : complété sans contrainte, dans l'ordre
+    assert [r["book"]["id"] for r in prof.diversify(items[:5], 4)] == [1, 2, 3, 4]
+    assert [r["book"]["id"] for r in prof.diversify(items, 5, None)] == [1, 2, 3, 4, 5]
+
+
+def test_recommend_diversifie_les_categories(db):
+    with get_connection(db) as conn:
+        for id_ in (5, 6, 7):
+            conn.execute("INSERT INTO books (id, title, authors, description, main_category,"
+                         " categories, themes, ambiance, published_year, page_count) VALUES"
+                         f" ({id_}, 'Livre {id_}', '[\"Auteur {id_}\"]', 'test', 'thriller',"
+                         " '[\"thriller\"]', '[\"crime\"]', '\"tendue\"', 2020, 300)")
+    engine.reset_cache()
+    p = prof.build_profile(answers(q1=["thriller"], q2=["crime"], q3=["tendue"]))
+    free = prof.recommend(p, n=5, db_path=db, max_per_category=None)
+    assert sum(r["book"]["main_category"] == "thriller" for r in free) == 4
+    results = prof.recommend(p, n=5, db_path=db)
+    cats = [r["book"]["main_category"] for r in results]
+    assert cats.count("thriller") == 3 and len(results) == 5
+    assert [r["score"] for r in results] == sorted([r["score"] for r in results], reverse=True)
+
+
 # --- Mise à jour après une note --------------------------------------------------------------
 
 def test_recompute_learned_and_cap():

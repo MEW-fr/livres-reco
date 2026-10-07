@@ -10,7 +10,7 @@
     <h1 class="page-title">{{ book.title }}</h1>
     <p class="book-page-authors">{{ book.authors|join(', ') if book.authors else 'Auteur : ' ~ missing }}</p>
 
-    {% if book_affinity %}<span class="affinity">{{ book_affinity }}</span>{% endif %}
+    {% with score=scores.get(book.id) %}{% include "_affinity.html" %}{% endwith %}
     {% if reason %}<p class="reason">✦ {{ reason }}</p>{% endif %}
 
     <section class="reading-actions card">
@@ -62,7 +62,7 @@
   {% if similar %}
   <div class="book-grid">
     {% for s in similar %}
-    {% with book=s.book, link_args={}, note=s.explanation %}{% include "_book_card.html" %}{% endwith %}
+    {% with book=s.book, score=scores.get(s.book.id), link_args={}, note=s.explanation %}{% include "_book_card.html" %}{% endwith %}
     {% endfor %}
   </div>
   {% else %}

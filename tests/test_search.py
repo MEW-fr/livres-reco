@@ -31,6 +31,32 @@ def test_recherche_insensible_aux_accents(app, client):
     assert "/livre/3?q=" in page
 
 
+def test_apostrophes_typographiques_des_deux_cotes(app, client):
+    login(client, make_user(app))
+    for query in ("cœurs d'ete", "Cœurs d’été", "cœurs d´été"):
+        page = titles(client.get(f"/recherche?q={query}"))
+        assert "Cœurs d&#39;été" in page and "Résultat approché" not in page, query
+
+
+def test_resultats_approches_marques(app, client):
+    login(client, make_user(app))
+    page = titles(client.get("/recherche?q=etoiles lointanes"))  # une lettre en moins
+    assert "Étoiles lointaines" in page and "Résultat approché" in page
+    page = titles(client.get("/recherche?q=julie peit"))  # auteur, une faute par mot
+    assert "Cœurs d&#39;été" in page and "Résultat approché" in page
+
+
+def test_approche_seulement_sous_cinq_exacts():
+    from src import engine
+    books = [{"id": i, "title": t, "authors": []} for i, t in enumerate(
+        ["Le lac", "Un lac", "Lac bleu", "Lac noir", "Petit lac", "Le bac"], 1)]
+    index = engine.Index(books, {}, None, None, {})
+    assert engine.search_books(index, "lac") == (books[:5], [])
+    exact, approx = engine.search_books(index, "le lac", None)
+    assert [b["id"] for b in exact] == [1] and 6 in [b["id"] for b in approx]
+    assert engine.one_edit("demin", "demain") and not engine.one_edit("vye", "vies")
+
+
 def test_recherche_trop_courte_ou_vide(app, client):
     login(client, make_user(app))
     assert "au moins 2 caractères" in titles(client.get("/recherche?q=e"))

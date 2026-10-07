@@ -416,7 +416,8 @@ def run(db_path=DB_PATH, reset=False, today=None, out=print):
     for row in PERSONAS:
         answers = answers_of(row)
         profile = build_profile(answers)
-        pool = [r["book"] for r in recommend(profile, POOL, db_path=db_path)]
+        pool = [r["book"] for r in recommend(profile, POOL, db_path=db_path,
+                                             max_per_category=None)]
         personas.append({"pseudo": row[0], "total": row[-1], "answers": answers,
                          "profile": profile, "family": profile["family"], "pool": pool})
     first, second = personas[:FIRST_WAVE], personas[FIRST_WAVE:]

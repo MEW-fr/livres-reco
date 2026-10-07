@@ -8,6 +8,7 @@ from flask import (Blueprint, abort, current_app, g, redirect, render_template, 
 from app import filters as user_filters
 from app.auth import db_path, profile_required
 from src import db, home
+from src.profile import diversify
 
 bp = Blueprint("main", __name__)
 
@@ -27,6 +28,11 @@ def jour(value):
 @bp.app_template_filter("affinite")
 def affinite(score):
     return home.affinity(score)
+
+
+@bp.app_template_filter("affinite_niveau")
+def affinite_niveau(score):
+    return home.affinity_level(score)
 
 
 @bp.app_context_processor
@@ -59,19 +65,26 @@ def accueil():
     else:
         error = None
     return render_template("main/accueil.html", active="accueil", sections=sections,
-                           current=current, error=error, today=date.today().isoformat())
+                           current=current, error=error, today=date.today().isoformat(),
+                           scores=section_scores(sections))
+
+
+def section_scores(sections):
+    """{id: S} de tous les livres affichés dans les sections, en une passe."""
+    return home.scores_for(g.user, [i["book"] for s in sections for i in s["items"]],
+                           db_path())
 
 
 def home_sections():
     """« Choisis pour toi » (ordre renouvelé), puis les sections communautaires."""
     filters = engine_filters()
     best = home.pour_toi(g.user, home.RENEW_POOL, filters, db_path=db_path())
-    picks = home.renouveler(best, session.get(SEEN_KEY, []))[:SECTION_SIZE]
+    picks = diversify(home.renouveler(best, session.get(SEEN_KEY, [])), SECTION_SIZE)
     session[SHOWN_KEY] = [r["book"]["id"] for r in picks]
     pour_toi = home.section(
         "pour-toi", "TON PROCHAIN CRUSH LECTURE", "Choisis pour toi",
         "Les correspondances les plus fortes avec tes préférences déclarées.",
-        [{"book": r["book"], "note": None, "score": r["score"]} for r in picks],
+        [{"book": r["book"], "note": None} for r in picks],
         "Aucun livre ne passe tes filtres actuels : élargis-les pour voir des suggestions.")
     return [pour_toi, *home.community_sections(g.user, SECTION_SIZE, filters,
                                                db_path=db_path())]
@@ -96,8 +109,7 @@ def selection(kind):
         results = home.pour_toi(g.user, limit + 1, filters, db_path=db_path())
         found = home.section(kind, "TON PROCHAIN CRUSH LECTURE", "Choisis pour toi",
                              "Toute ta sélection, de la meilleure correspondance à la suivante.",
-                             [{"book": r["book"], "note": None, "score": r["score"]}
-                              for r in results],
+                             [{"book": r["book"], "note": None} for r in results],
                              "Aucun livre ne passe tes filtres actuels.")
     else:
         found = next((s for s in home.community_sections(g.user, limit + 1, filters,
@@ -108,7 +120,7 @@ def selection(kind):
     more = len(found["items"]) > limit
     found["items"] = found["items"][:limit]
     return render_template("main/selection.html", active="accueil", section=found,
-                           lots=page, more=more)
+                           lots=page, more=more, scores=section_scores([found]))
 
 
 @bp.route("/explorer")
@@ -119,5 +131,6 @@ def explorer():
     except Exception:  # catalogue absent ou illisible
         current_app.logger.exception("Explorer indisponible")
         universes, error = [], CATALOG_ERROR
+    scores = {r["book"]["id"]: r["score"] for u in universes for r in u["items"]}
     return render_template("main/explorer.html", active="explorer", universes=universes,
-                           error=error)
+                           error=error, scores=scores)

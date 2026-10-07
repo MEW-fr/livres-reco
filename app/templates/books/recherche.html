@@ -23,7 +23,7 @@
 <p class="muted">{{ total }} livre{{ 's' if total > 1 }} trouvé{{ 's' if total > 1 }}{% if pages > 1 %} · page {{ page }} sur {{ pages }}{% endif %}</p>
 <div class="book-grid">
   {% for b in results %}
-  {% with book=b, link_args={'q': query}, note=None %}{% include "_book_card.html" %}{% endwith %}
+  {% with book=b, score=scores.get(b.id), link_args={'q': query}, note='Résultat approché' if b.id in approx else None %}{% include "_book_card.html" %}{% endwith %}
   {% endfor %}
 </div>
 

@@ -5,6 +5,7 @@
 - score_book : score S d'un livre selon le barème : S = 0,84 × P + R + D.
 - novelty_for : indice de nouveauté N (0-100) de chaque livre.
 - recommend : les n meilleurs livres pour un profil, avec explication.
+- diversify : au plus 3 livres de même catégorie principale parmi n.
 - recompute_learned : le profil évolue avec les notes (±0,05, plafond ±0,30).
 - save_learned : recalcul sur toutes les notes de l'utilisateur et enregistrement.
 
@@ -34,6 +35,8 @@ LENGTHS = ("court", "moyen", "long")  # < 250, 250-450, > 450 pages
 # (âge maximal pour 100 %, âge maximal pour 50 %) ; au-delà : 0 %
 PERIODS = {"nouveautes": (3, 10), "recents": (10, 25)}
 CLASSIC_AGE = 25
+
+MAX_PER_CATEGORY = 3  # livres de même main_category parmi les n recommandés
 
 RATING_STEP = 0.05
 RATING_CAP = 0.30
@@ -405,11 +408,32 @@ def first_author(book):
     return normalize(book["authors"][0]).strip() if book["authors"] else None
 
 
-def recommend(profile, n=5, filters=None, read_ids=(), group_pop=None, db_path=DB_PATH):
+def diversify(items, n, max_per_category=MAX_PER_CATEGORY):
+    """Les n premiers items (dicts {"book", ...} déjà triés) avec au plus max_per_category
+    livres de même main_category ; si la liste ne le permet pas, complétés par les
+    suivants sans contrainte. L'ordre d'origine est conservé. None : pas de contrainte."""
+    if max_per_category is None:
+        return items[:n]
+    kept, counts = [], Counter()
+    for i, item in enumerate(items):
+        if len(kept) == n:
+            break
+        category = item["book"]["main_category"]
+        if counts[category] < max_per_category:
+            counts[category] += 1
+            kept.append(i)
+    chosen = set(kept)
+    kept += [i for i in range(len(items)) if i not in chosen][:n - len(kept)]
+    return [items[i] for i in sorted(kept)]
+
+
+def recommend(profile, n=5, filters=None, read_ids=(), group_pop=None, db_path=DB_PATH,
+              max_per_category=MAX_PER_CATEGORY):
     """Les n livres de meilleur score S : [{book, score, P, R, D, N, detail, explanation}].
 
     Écarte les genres à éviter (q8, prioritaires sur q1) et les livres déjà lus.
-    Un seul livre par premier auteur.
+    Un seul livre par premier auteur, au plus max_per_category par catégorie principale
+    (diversify ; None pour lever la contrainte).
     group_pop : {id livre: popularité 0-100 chez les lecteurs du même profil} ou None.
     """
     index = engine.get_index(db_path)
@@ -432,18 +456,17 @@ def recommend(profile, n=5, filters=None, read_ids=(), group_pop=None, db_path=D
     scored.sort(key=lambda item: item[:4], reverse=True)
 
     # Un livre par auteur : les suivants du même premier auteur passent leur tour.
-    results, seen_authors = [], set()
+    ranked, seen_authors = [], set()
     for S, _, _, _, book, d in scored:
-        if len(results) == n:
-            break
         author = first_author(book)
         if author in seen_authors:
             continue
         if author:
             seen_authors.add(author)
-        results.append({"book": book, "score": S, "P": d["P"], "R": d["R"], "D": d["D"],
-                        "N": d["N"], "detail": d, "explanation": explain(profile, book, d)})
-    return results
+        ranked.append({"book": book, "score": S, "detail": d})
+    return [dict(r, P=r["detail"]["P"], R=r["detail"]["R"], D=r["detail"]["D"],
+                 N=r["detail"]["N"], explanation=explain(profile, r["book"], r["detail"]))
+            for r in diversify(ranked, n, max_per_category)]
 
 
 # --- Évolution après une note ---------------------------------------------------------------

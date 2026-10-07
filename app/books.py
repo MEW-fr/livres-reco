@@ -34,10 +34,8 @@ def get_book(book_id):
 # --- Recherche ---------------------------------------------------------------------------
 
 def search(query, filters):
-    """Livres dont le titre, puis un auteur, contient la requête (sans accents ni casse),
-    parmi ceux qu'acceptent les filtres."""
-    index = engine.get_index(db_path())
-    return [b for b in engine.find_book(index, query) if filters.accepts(b)]
+    """(exacts, approchés) de engine.search_books, parmi les livres qu'acceptent les filtres."""
+    return engine.search_books(engine.get_index(db_path()), query, filters.accepts)
 
 
 @bp.route("/recherche")
@@ -54,16 +52,18 @@ def recherche():
             context["error"] = f"Tape au moins {MIN_QUERY} caractères pour lancer la recherche."
         return render_template("books/recherche.html", **context)
     try:
-        results = search(query, user_filters.to_engine(filters))
+        exact, approx = search(query, user_filters.to_engine(filters))
     except Exception:  # catalogue absent ou illisible
         current_app.logger.exception("Recherche impossible")
         context["error"] = "La recherche est indisponible pour le moment. Réessaie plus tard."
         return render_template("books/recherche.html", **context)
 
+    results = exact + approx
     pages = max(1, math.ceil(len(results) / PER_PAGE))
     page = min(max(page, 1), pages)
-    context.update(results=results[(page - 1) * PER_PAGE:page * PER_PAGE], page=page,
-                   pages=pages, total=len(results))
+    shown = results[(page - 1) * PER_PAGE:page * PER_PAGE]
+    context.update(results=shown, approx={b["id"] for b in approx}, page=page, pages=pages,
+                   total=len(results), scores=home.scores_for(g.user, shown, db_path()))
     return render_template("books/recherche.html", **context)
 
 
@@ -75,13 +75,10 @@ def fiche(book_id):
     book = get_book(book_id)
     query = request.args.get("q", "").strip()
     source = request.args.get("from")
-    affinity = None
     if book["hidden"]:  # hors index : ni explication ni livres similaires
         reason = None
     elif source in home.SOURCES:
         reason = home.reason(g.user, book, source, db_path=db_path())
-        if source in home.RECOMMENDED:
-            affinity = home.affinity_for(g.user, book, db_path())
     elif query:
         reason = f"Correspond à ta recherche « {query} »."
     else:
@@ -91,8 +88,9 @@ def fiche(book_id):
     similar = ([] if book["hidden"] else
                engine.similar_books(book_id, 5, filters=filters, db_path=db_path()))
 
+    scores = home.scores_for(g.user, [book] + [s["book"] for s in similar], db_path())
     return render_template(
-        "books/fiche.html", book=book, reason=reason, book_affinity=affinity, similar=similar,
+        "books/fiche.html", book=book, reason=reason, scores=scores, similar=similar,
         reading=db.get_reading(g.user["id"], book_id, db_path()),
         group=GROUP_OF.get(book["main_category"]),
         categories=[CATEGORY_LABELS.get(c, c) for c in dict.fromkeys(

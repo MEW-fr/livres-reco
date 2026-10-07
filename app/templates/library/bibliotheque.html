@@ -24,6 +24,7 @@
       {% if tab == 'a-lire' %}<span class="badge">N° {{ r.rank }}</span>{% endif %}
       <h2><a href="{{ url_for('books.fiche', book_id=r.book_id) }}">{{ r.title }}</a></h2>
       <p class="book-author">{{ r.authors|join(', ') if r.authors else 'Auteur inconnu' }}</p>
+      {% with score=scores.get(r.book_id) %}{% include "_affinity.html" %}{% endwith %}
 
       {% if tab == 'a-lire' %}
       <div class="shelf-actions">

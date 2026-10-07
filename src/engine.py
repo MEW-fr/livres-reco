@@ -22,6 +22,7 @@ import sys
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from pathlib import Path
 
 import numpy as np
@@ -321,15 +322,79 @@ def novelty(centroid_vec, candidate_ids, db_path=DB_PATH):
     return {b: float(np.clip(100 * (1 - c), 0, 100)) for b, c in zip(ids, np.ravel(cosines))}
 
 
-# --- CLI -------------------------------------------------------------------------------
+# --- Recherche -------------------------------------------------------------------------
+
+APOSTROPHES = str.maketrans("’‘´", "'''")
+MIN_EXACT = 5           # en dessous, la recherche complète par des résultats approchés
+FUZZY_RATIO = 0.8       # difflib.SequenceMatcher : ressemblance minimale de la chaîne entière
+FUZZY_MIN_WORD = 4      # mots plus courts : correspondance exacte exigée
+
+
+def search_text(text):
+    """Texte de recherche : apostrophes typographiques -> ', minuscules, sans accents."""
+    return normalize(text.translate(APOSTROPHES))
+
+
+def one_edit(a, b):
+    """Vrai si a et b sont à distance de Levenshtein ≤ 1."""
+    if abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) > len(b):
+        a, b = b, a
+    i = 0
+    while i < len(a) and a[i] == b[i]:
+        i += 1
+    if len(a) == len(b):
+        return a[i + 1:] == b[i + 1:]
+    return a[i:] == b[i + 1:]
+
+
+def close_words(query_words, text_words):
+    """Chaque mot de la requête a un mot proche (≤ 1 faute, exact si court) dans le texte."""
+    return bool(query_words) and all(
+        any(w == t or (len(w) >= FUZZY_MIN_WORD and one_edit(w, t)) for t in text_words)
+        for w in query_words)
+
+
+def approximate(q, text):
+    """Ressemblance de la requête avec un titre ou un auteur normalisé (0 si trop loin)."""
+    ratio = SequenceMatcher(None, q, text).ratio()
+    if ratio >= FUZZY_RATIO or close_words(TOKEN_RE.findall(q), TOKEN_RE.findall(text)):
+        return ratio
+    return 0.0
+
+
+def search_books(index, query, accepts=None):
+    """(exacts, approchés). Exacts : le titre, sinon un auteur, contient la requête
+    (sans accents, casse ni apostrophes typographiques). Moins de MIN_EXACT exacts :
+    complétés par les livres dont le titre ou un auteur approche la requête, du plus
+    proche au moins proche. accepts : filtre facultatif appliqué aux deux listes."""
+    q = search_text(query).strip()
+    books = [b for b in index.books if accepts is None or accepts(b)]
+    by_title = [b for b in books if q in search_text(b["title"])]
+    by_author = [b for b in books if b not in by_title
+                 and any(q in search_text(a) for a in b["authors"])]
+    exact = by_title + by_author
+    if len(exact) >= MIN_EXACT or not q:
+        return exact, []
+    found = {b["id"] for b in exact}
+    scored = []
+    for b in books:
+        if b["id"] not in found:
+            score = max(approximate(q, search_text(t)) for t in [b["title"], *b["authors"]])
+            if score > 0:
+                scored.append((-score, b["id"], b))
+    scored.sort(key=lambda item: item[:2])
+    return exact, [b for _, _, b in scored]
+
 
 def find_book(index, query):
-    """Livres dont le titre, sinon un auteur, contient la requête (sans accents ni casse)."""
-    q = normalize(query)
-    by_title = [b for b in index.books if q in normalize(b["title"])]
-    by_author = [b for b in index.books if b not in by_title
-                 and any(q in normalize(a) for a in b["authors"])]
-    return by_title + by_author
+    """Résultats exacts puis approchés de search_books, en une seule liste."""
+    exact, approx = search_books(index, query)
+    return exact + approx
+
+
+# --- CLI -------------------------------------------------------------------------------
 
 
 def main(argv):
