@@ -27,7 +27,7 @@ THEME_LABELS = {
     "famille": "famille", "amour": "amour", "amitie": "amitié", "guerre": "guerre",
     "crime": "crime", "voyage": "voyage", "societe": "société", "science": "science",
     "nature": "nature", "memoire": "mémoire", "deuil": "deuil", "secret": "secret",
-    "initiation": "initiation", "art": "art",
+    "initiation": "initiation", "art": "art", "survie": "survie",
 }
 
 AMBIANCE_LABELS = {
@@ -41,25 +41,35 @@ def options(pairs):
     return [{"code": code, "label": label} for code, label in pairs] + [NEUTRAL_OPTION]
 
 
-CATEGORY_OPTIONS = list(CATEGORY_LABELS.items())
+# Groupes proposés à l'écran (q1, q8) : code -> (libellé, catégories du catalogue).
+GROUPS = {
+    "litterature": ("Littérature générale", ["littérature générale"]),
+    "thriller_polar": ("Thriller & polar", ["thriller", "policier"]),
+    "science_fiction": ("Science-fiction", ["science-fiction", "dystopie"]),
+    "fantasy": ("Fantasy & fantastique", ["fantastique", "horreur"]),
+    "histoire_aventure": ("Histoire & aventure", ["roman historique", "aventure"]),
+    "romance": ("Romance", ["romance"]),
+    "biographies": ("Biographies & récits", ["biographie"]),
+    "essais": ("Essais & idées", ["essai"]),
+}
+
+GROUP_OPTIONS = [(code, label) for code, (label, _) in GROUPS.items()]
 
 QUESTIONS = [
     {
         "id": "q1", "type": "multi", "weight": 24,
         "text": "Qu'est-ce que tu aimes lire, spontanément ?",
         "help": "Choisis autant de genres que tu veux.",
-        "options": options(CATEGORY_OPTIONS + [("autre", "Autre chose (précise si tu veux)")]),
+        "options": options(GROUP_OPTIONS + [("autre", "Autre chose (précise si tu veux)")]),
     },
     {
         "id": "q2", "type": "multi", "weight": 22,
         "text": "Quels sujets te parlent le plus ?",
         "help": "Les thèmes vers lesquels tu reviens souvent.",
         "options": options([
-            ("famille", "Famille"), ("amour", "Amour"), ("amitie", "Amitié"),
-            ("guerre", "Guerre"), ("crime", "Crime"), ("voyage", "Voyage"),
-            ("societe", "Société"), ("science", "Science"), ("nature", "Nature"),
-            ("memoire", "Mémoire & passé"), ("deuil", "Deuil"), ("secret", "Secrets"),
-            ("initiation", "Passage à l'âge adulte"), ("art", "Art & création"),
+            ("famille", "Famille"), ("secret", "Secrets"), ("survie", "Survie"),
+            ("societe", "Société et politique"), ("amour", "Amour"), ("crime", "Enquête"),
+            ("science", "Science et technologie"), ("memoire", "Destins historiques"),
         ]),
     },
     {
@@ -67,9 +77,10 @@ QUESTIONS = [
         "text": "Quelle ambiance te fait du bien ?",
         "help": "L'atmosphère que tu recherches dans un livre.",
         "options": options([
-            ("sombre", "Sombre"), ("tendue", "Tendue, haletante"), ("legere", "Légère, drôle"),
-            ("intimiste", "Intimiste"), ("epique", "Épique"), ("poetique", "Poétique"),
-            ("varie", "Ça dépend des jours"),
+            ("sombre", "Sombre"), ("tendue", "Haletante"),
+            ("legere", "Drôle et réconfortante"), ("intimiste", "Psychologique et intime"),
+            ("epique", "Épique et dépaysante"), ("poetique", "Contemplative et poétique"),
+            ("varie", "Je varie"),
         ]),
     },
     {
@@ -77,10 +88,10 @@ QUESTIONS = [
         "text": "Comment aimes-tu qu'une histoire soit racontée ?",
         "help": "Le rythme et la forme qui te conviennent.",
         "options": options([
-            ("lineaire", "Une intrigue linéaire"), ("rapide", "Un rythme rapide"),
-            ("choral", "Plusieurs voix"), ("saga", "Une saga en plusieurs tomes"),
-            ("court", "Des chapitres courts"), ("introspectif", "Introspectif"),
-            ("sans_pref", "Pas de préférence"),
+            ("fresque", "Fresque"), ("huis_clos", "Huis clos"),
+            ("rapide", "Intrigue rapide"), ("premiere_personne", "Première personne"),
+            ("choral", "Récit choral"), ("saga_familiale", "Saga familiale"),
+            ("enquete", "Enquête"), ("sans_pref", "Sans préférence"),
         ]),
     },
     {
@@ -107,15 +118,15 @@ QUESTIONS = [
         "text": "Dans quelle langue lis-tu ?",
         "help": "Pour l'instant, le catalogue est en français.",
         "options": options([
-            ("fr", "Français"), ("en", "Anglais"), ("autre", "Une autre langue"),
-            ("plusieurs", "Plusieurs langues"),
+            ("fr", "Français"), ("en", "Anglais"), ("es", "Espagnol"), ("ar", "Arabe"),
+            ("zh", "Chinois mandarin"), ("hi", "Hindi"), ("toutes", "Toutes"),
         ]),
     },
     {
         "id": "q8", "type": "multi", "weight": 0,  # exclusion
         "text": "Y a-t-il des genres que tu préfères éviter ?",
         "help": "On ne te les proposera pas.",
-        "options": options(CATEGORY_OPTIONS + [("aucun", "Aucun, je suis ouvert·e à tout")]),
+        "options": options(GROUP_OPTIONS + [("aucun", "Aucune")]),
     },
     {
         "id": "q9", "type": "single", "weight": 8,  # bonus R

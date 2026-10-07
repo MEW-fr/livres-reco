@@ -108,6 +108,12 @@ THEMES = {
         "chanteu", "chanson", "opera", "piano", "violon", "photograph", "acteur", "actrice",
         "musee", "compositeur",
     ],
+    "survie": [
+        "survie", "surviv", "apocalyp", "catastrophe", "cataclysm", "fin du monde", "isole",
+        "naufrag", "famine", "penurie", "epidemie", "pandemie", "abri$", "refuge", "hostile",
+        "peril", "rescape", "tenir bon", "desastre", "sauvetage", "bunker", "radiation",
+        "zombie",
+    ],
 }
 
 AMBIANCES = {

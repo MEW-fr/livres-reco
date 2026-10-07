@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT,
     profile_label TEXT,
     profile_vector TEXT,  -- JSON, profil complet (src.profile.build_profile)
-    profile_confidence REAL
+    profile_confidence REAL,
+    profile_family TEXT   -- famille du profil (src.profile.FAMILY_OF)
 );
 
 CREATE TABLE IF NOT EXISTS survey_answers (
@@ -74,7 +75,7 @@ def get_connection(db_path=DB_PATH):
 
 
 BOOKS_NEW_COLUMNS = {"categories", "themes", "ambiance"}
-USERS_NEW_COLUMNS = {"email": "TEXT", "profile_confidence": "REAL"}
+USERS_NEW_COLUMNS = {"email": "TEXT", "profile_confidence": "REAL", "profile_family": "TEXT"}
 
 
 def init_db(db_path=DB_PATH):
@@ -99,13 +100,13 @@ def init_db(db_path=DB_PATH):
 # --- Profil et réponses au questionnaire ---------------------------------------------
 
 def save_profile(user_id, profile, db_path=DB_PATH):
-    """Enregistre le profil (JSON), son libellé et sa confiance."""
+    """Enregistre le profil (JSON), son libellé, sa confiance et sa famille."""
     with get_connection(db_path) as conn:
         conn.execute(
-            "UPDATE users SET profile_vector = ?, profile_label = ?, profile_confidence = ?"
-            " WHERE id = ?",
+            "UPDATE users SET profile_vector = ?, profile_label = ?, profile_confidence = ?,"
+            " profile_family = ? WHERE id = ?",
             (json.dumps(profile, ensure_ascii=False), profile["label"], profile["confidence"],
-             user_id),
+             profile["family"], user_id),
         )
 
 

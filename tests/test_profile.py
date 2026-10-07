@@ -1,3 +1,4 @@
+import copy
 import json
 
 import pytest
@@ -5,7 +6,7 @@ import pytest
 from src import engine, profile as prof
 from src.db import (get_connection, init_db, load_answers, load_profile, save_answer,
                     save_profile)
-from src.questions import QUESTIONS
+from src.questions import GROUPS, QUESTIONS, QUESTIONS_BY_ID
 
 YEAR = 2026
 NEUTRAL_ANSWERS = {q["id"]: "neutre" for q in QUESTIONS}
@@ -33,6 +34,24 @@ def test_questions_have_neutral_option_and_weights():
     assert sum(weights[q] for q in ("q1", "q2", "q3", "q4", "q5", "q6")) == 84
 
 
+def test_screen_options():
+    codes = {qid: [o["code"] for o in QUESTIONS_BY_ID[qid]["options"]] for qid in ("q1", "q2", "q8")}
+    assert codes["q1"] == [*GROUPS, "autre", "neutre"]
+    assert codes["q8"] == [*GROUPS, "aucun", "neutre"]
+    assert codes["q2"] == ["famille", "secret", "survie", "societe", "amour", "crime", "science",
+                           "memoire", "neutre"]
+    covered = [c for _, cats in GROUPS.values() for c in cats]
+    assert sorted(covered) == sorted(prof.CATEGORY_LABELS)  # 8 groupes = 12 catégories
+
+
+def test_groups_are_expanded():
+    p = prof.build_profile(answers(q1=["thriller_polar", "romance", "autre"],
+                                   q8=["fantasy", "essais"]))
+    assert p["genres"] == {"thriller": 1.0, "policier": 1.0, "romance": 1.0}
+    assert p["exclusions"] == ["fantastique", "horreur", "essai"]
+    assert prof.build_profile(answers(q8=["aucun"]))["exclusions"] == []
+
+
 # --- Exemple A du barème -----------------------------------------------------------------
 
 def test_example_a():
@@ -52,7 +71,7 @@ def test_example_a():
 def test_all_neutral():
     p = prof.build_profile(NEUTRAL_ANSWERS)
     assert p["confidence"] == 0
-    assert p["label"] == "Lecteur·rice en exploration"
+    assert p["label"] == "Éclectique" and p["family"] == "éclectique"
     S, detail = prof.score_book(p, book(themes=["crime"], ambiance="sombre"), N=50, year=YEAR)
     assert detail["P"] is None
     assert not {"q1", "q2", "q3", "q5", "q6"} & detail.keys()
@@ -207,29 +226,36 @@ def test_one_book_per_author(db):
 
 # --- Mise à jour après une note --------------------------------------------------------------
 
-def test_update_after_rating_and_cap():
+def test_recompute_learned_and_cap():
     p = prof.build_profile(answers(q1=["thriller"], q2=["crime"]))
     b = book(main="thriller", cats=["thriller", "policier"], themes=["crime"], ambiance="sombre")
-    prof.update_after_rating(p, b, 5)
+    prof.recompute_learned(p, [(b, 5)])
     assert p["genres"] == {"thriller": 1.05, "policier": 0.05}
     assert p["themes"]["crime"] == 1.05 and p["ambiances"]["sombre"] == 0.05
-    for _ in range(20):
-        prof.update_after_rating(p, b, 5)
+    prof.recompute_learned(p, [(b, 5)] * 21)
     assert p["genres"]["thriller"] == 1.30 and p["genres"]["policier"] == 0.30
 
-    prof.update_after_rating(p, b, 3)
-    assert p["genres"]["thriller"] == 1.30
-    for _ in range(30):
-        prof.update_after_rating(p, b, 1)
+    prof.recompute_learned(p, [(b, 1)] * 30 + [(b, 3)])
     assert p["genres"]["thriller"] == 0.70   # plafond −0,30 sous la valeur initiale
-    assert p["genres"]["policier"] == 0.0    # plancher 0
+    assert "policier" not in p["genres"]     # une note négative ne crée rien
+
+
+def test_recompute_is_idempotent_and_note_change_does_not_stack():
+    p = prof.build_profile(answers(q1=["thriller"], q2=["crime"]))
+    b = book(main="thriller", cats=["thriller"], themes=["crime"])
+    first = copy.deepcopy(prof.recompute_learned(p, [(b, 5)]))
+    assert prof.recompute_learned(p, [(b, 5)]) == first          # relancer ne cumule pas
+    prof.recompute_learned(p, [(b, 2)])                          # 5 -> 2 : on repart de initial
+    assert p["genres"]["thriller"] == 0.95 and p["themes"]["crime"] == 0.95
+    prof.recompute_learned(p, [])                                # note retirée
+    assert p["genres"] == p["initial"]["genres"] == {"thriller": 1.0}
 
 
 def test_neutral_dimension_stays_out_of_p_after_learning():
     p = prof.build_profile(answers(q2=["crime"]))
     assert p["answered"] == {"q1": False, "q2": True, "q3": False, "q5": False, "q6": False}
     b = book(main="thriller", cats=["thriller"], themes=["crime"], ambiance="sombre")
-    prof.update_after_rating(p, b, 5)
+    prof.recompute_learned(p, [(b, 5)])
     assert p["genres"] == {"thriller": 0.05} and p["ambiances"] == {"sombre": 0.05}  # conservées
     _, d = prof.score_book(p, b, N=0, year=YEAR)
     assert "q1" not in d and "q3" not in d
@@ -239,7 +265,7 @@ def test_neutral_dimension_stays_out_of_p_after_learning():
 
 def test_negative_rating_does_not_create():
     p = prof.build_profile(answers(q1=["thriller"]))
-    prof.update_after_rating(p, book(main="romance", cats=["romance"], themes=["amour"]), 1)
+    prof.recompute_learned(p, [(book(main="romance", cats=["romance"], themes=["amour"]), 1)])
     assert p["genres"] == {"thriller": 1.0} and p["themes"] == {}
 
 
@@ -254,7 +280,11 @@ def test_negative_rating_does_not_create():
     ({"q1": ["littérature générale", "romance"]}, "Émotions & liens"),
     ({"q1": ["policier", "romance"]}, "Fin limier"),
     ({"q1": ["neutre"], "q3": ["intimiste"]}, "Lecteur·rice sensible"),
-    ({"q1": ["autre"], "q3": ["varie"]}, "Lecteur·rice en exploration"),
+    ({"q1": ["autre"], "q3": ["varie"]}, "Éclectique"),
+    ({"q1": ["thriller_polar"]}, "Suspense & tension"),
+    ({"q1": ["science_fiction"]}, "Futurs possibles"),
+    ({"q1": ["biographies", "essais"]}, "Esprits curieux"),
+    ({"q1": ["romance"]}, "Cœur tendre"),
 ])
 def test_labels(given, expected):
     p = prof.build_profile(answers(**given))
@@ -265,10 +295,29 @@ def test_labels(given, expected):
 
 def test_all_labels_complete():
     entries = ([e for _, e in prof.PAIR_LABELS] + list(prof.GENRE_LABELS.values())
-               + list(prof.AMBIANCE_PROFILE_LABELS.values()) + [prof.EXPLORER_LABEL])
+               + list(prof.AMBIANCE_PROFILE_LABELS.values()) + [prof.ECLECTIC_LABEL])
     assert len(prof.PAIR_LABELS) == 6 and len(prof.GENRE_LABELS) == 12
     for e in entries:
         assert e["description"].startswith("Tu ") and len(e["tags"]) == 4
+        assert e["family"] in prof.FAMILIES
+
+
+@pytest.mark.parametrize("given, family", [
+    ({"q1": ["thriller_polar"]}, "suspense"),
+    ({"q1": ["science_fiction", "fantasy"]}, "imaginaire"),
+    ({"q1": ["histoire_aventure"]}, "histoire"),
+    ({"q1": ["biographies"]}, "réel et idées"),
+    ({"q1": ["litterature", "romance"]}, "psychologie"),
+    ({"q3": ["intimiste"]}, "psychologie"),
+    ({"q1": ["romance", "thriller_polar", "histoire_aventure"]}, "éclectique"),  # 3 à égalité
+    ({"q1": ["romance", "litterature", "essais"]}, "psychologie"),        # 2 contre 1
+    ({"q1": ["autre"]}, "éclectique"),
+])
+def test_family(given, family):
+    p = prof.build_profile(answers(**given))
+    assert p["family"] == family
+    if family == "éclectique":
+        assert p["label"] == "Éclectique"
 
 
 # --- Base ------------------------------------------------------------------------------------
@@ -284,8 +333,10 @@ def test_db_profile_and_answers(tmp_path):
     save_profile(1, p, path)
     assert load_profile(1, path) == p
     with get_connection(path) as conn:
-        row = conn.execute("SELECT profile_label, profile_confidence FROM users").fetchone()
+        row = conn.execute("SELECT profile_label, profile_confidence, profile_family"
+                           " FROM users").fetchone()
     assert row["profile_label"] == "Suspense & tension"
+    assert row["profile_family"] == "suspense" and load_profile(1, path)["family"] == "suspense"
     assert row["profile_confidence"] == p["confidence"]
 
     save_answer(1, "q1", ["thriller"], path)

@@ -7,8 +7,8 @@ from src import db
 from src.questions import NEUTRAL, QUESTIONS
 
 ANSWERS = {
-    "q1": ["thriller", "policier"], "q2": ["crime", "secret"], "q3": ["tendue"],
-    "q4": [NEUTRAL], "q5": "moyen", "q6": "recents", "q7": ["fr"], "q8": ["horreur"],
+    "q1": ["thriller_polar"], "q2": ["crime", "secret"], "q3": ["tendue"],
+    "q4": [NEUTRAL], "q5": "moyen", "q6": "recents", "q7": ["fr"], "q8": ["fantasy"],
     "q9": "themes", "q10": "mixte",
 }
 
@@ -90,7 +90,7 @@ def test_reponse_vide_ou_neutre_exclusive(app, client):
     register(client)
     page = client.post("/questionnaire/1", data={}).get_data(as_text=True)
     assert "Choisis au moins une réponse" in page
-    client.post("/questionnaire/1", data={"answer": ["thriller", NEUTRAL]})
+    client.post("/questionnaire/1", data={"answer": ["thriller_polar", NEUTRAL]})
     assert db.load_answers(1, app.config["DB_PATH"])["q1"] == [NEUTRAL]
 
 

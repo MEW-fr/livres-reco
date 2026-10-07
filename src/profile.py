@@ -1,11 +1,11 @@
 """Construction et gestion du profil lecteur.
 
 - build_profile : réponses au questionnaire -> profil (genres, thèmes, ambiances, filtres,
-  bonus, confiance, libellé).
+  bonus, confiance, libellé, famille).
 - score_book : score S d'un livre selon le barème : S = 0,84 × P + R + D.
 - novelty_for : indice de nouveauté N (0-100) de chaque livre.
 - recommend : les n meilleurs livres pour un profil, avec explication.
-- update_after_rating : le profil évolue avec les notes (±0,05, plafond ±0,30).
+- recompute_learned : le profil évolue avec les notes (±0,05, plafond ±0,30).
 
 Usage : python -m src.profile --demo
 """
@@ -13,12 +13,14 @@ Usage : python -m src.profile --demo
 import copy
 import sys
 import time
+from collections import Counter
 from datetime import date
 
 from src import engine
 from src.db import DB_PATH
 from src.engine import book_categories, join_fr, normalize
-from src.questions import AMBIANCE_LABELS, CATEGORY_LABELS, NEUTRAL, QUESTIONS_BY_ID, THEME_LABELS
+from src.questions import (AMBIANCE_LABELS, CATEGORY_LABELS, GROUPS, NEUTRAL, QUESTIONS_BY_ID,
+                           THEME_LABELS)
 
 P_WEIGHT = 0.84        # S = 0,84 × P + R + D
 BONUS_MAX = 8          # R et D valent au plus 8 points
@@ -36,108 +38,134 @@ RATING_STEP = 0.05
 RATING_CAP = 0.30
 NOVELTY_MENTION = 2.0  # points apportés par N au-delà desquels l'explication le mentionne
 
-# --- Libellés ---------------------------------------------------------------------------
+# --- Familles et libellés ----------------------------------------------------------------
 
-def entry(label, description, tags):
-    return {"label": label, "description": description, "tags": tags}
+ECLECTIC = "éclectique"
+FAMILY_OF = {
+    "thriller": "suspense", "policier": "suspense",
+    "science-fiction": "imaginaire", "dystopie": "imaginaire",
+    "fantastique": "imaginaire", "horreur": "imaginaire",
+    "roman historique": "histoire", "aventure": "histoire",
+    "biographie": "réel et idées", "essai": "réel et idées",
+    "littérature générale": "psychologie", "romance": "psychologie",
+}
+FAMILIES = ("psychologie", "suspense", "imaginaire", "histoire", "réel et idées", ECLECTIC)
+TIE_LIMIT = 3  # 3 familles ou plus à égalité en tête : profil éclectique
+
+
+def entry(label, description, tags, family):
+    return {"label": label, "description": description, "tags": tags, "family": family}
 
 
 PAIR_LABELS = [
     (("thriller", "policier"), entry(
         "Suspense & tension",
         "Tu aimes les intrigues qui te tiennent en haleine jusqu'à la dernière page.",
-        ["Suspense", "Enquêtes", "Rebondissements", "Tension"])),
+        ["Suspense", "Enquêtes", "Rebondissements", "Tension"], "suspense")),
     (("science-fiction", "dystopie"), entry(
         "Futurs possibles",
         "Tu aimes imaginer demain et questionner le monde à travers d'autres futurs.",
-        ["Anticipation", "Sociétés", "Technologies", "Réflexion"])),
+        ["Anticipation", "Sociétés", "Technologies", "Réflexion"], "imaginaire")),
     (("fantastique", "horreur"), entry(
         "Mondes de l'ombre",
         "Tu aimes frissonner et basculer dans des univers où l'étrange s'invite.",
-        ["Étrange", "Frissons", "Créatures", "Mystère"])),
+        ["Étrange", "Frissons", "Créatures", "Mystère"], "imaginaire")),
     (("romance", "littérature générale"), entry(
         "Émotions & liens",
         "Tu aimes les histoires de cœur et les personnages qui te touchent.",
-        ["Émotions", "Relations", "Personnages", "Sensibilité"])),
+        ["Émotions", "Relations", "Personnages", "Sensibilité"], "psychologie")),
     (("biographie", "essai"), entry(
         "Esprits curieux",
         "Tu aimes comprendre le monde et découvrir des vies et des idées réelles.",
-        ["Idées", "Vies réelles", "Savoir", "Réflexion"])),
+        ["Idées", "Vies réelles", "Savoir", "Réflexion"], "réel et idées")),
     (("roman historique", "aventure"), entry(
         "Grandes épopées",
         "Tu aimes les grands récits qui t'emmènent loin, dans le temps ou l'espace.",
-        ["Épopées", "Histoire", "Voyages", "Héros"])),
+        ["Épopées", "Histoire", "Voyages", "Héros"], "histoire")),
 ]
 
 GENRE_LABELS = {
     "littérature générale": entry(
         "Âme littéraire", "Tu aimes les belles plumes et les histoires qui font réfléchir.",
-        ["Style", "Personnages", "Société", "Émotions"]),
+        ["Style", "Personnages", "Société", "Émotions"], FAMILY_OF["littérature générale"]),
     "thriller": entry(
         "Adrénaline", "Tu aimes quand le rythme s'emballe et que tout peut basculer.",
-        ["Suspense", "Rythme", "Rebondissements", "Tension"]),
+        ["Suspense", "Rythme", "Rebondissements", "Tension"], FAMILY_OF["thriller"]),
     "policier": entry(
         "Fin limier", "Tu aimes mener l'enquête et démasquer le coupable avant la fin.",
-        ["Enquêtes", "Indices", "Crimes", "Déduction"]),
+        ["Enquêtes", "Indices", "Crimes", "Déduction"], FAMILY_OF["policier"]),
     "science-fiction": entry(
         "Explorateur·rice du futur", "Tu aimes les sciences, l'espace et les mondes de demain.",
-        ["Espace", "Sciences", "Futur", "Technologies"]),
+        ["Espace", "Sciences", "Futur", "Technologies"], FAMILY_OF["science-fiction"]),
     "dystopie": entry(
         "Veilleur·se lucide", "Tu aimes les sociétés imaginaires qui en disent long sur la nôtre.",
-        ["Sociétés", "Résistance", "Anticipation", "Réflexion"]),
+        ["Sociétés", "Résistance", "Anticipation", "Réflexion"], FAMILY_OF["dystopie"]),
     "fantastique": entry(
         "Rêveur·se d'ailleurs", "Tu aimes la magie et les mondes qui n'existent nulle part ailleurs.",
-        ["Magie", "Mondes imaginaires", "Quêtes", "Merveilleux"]),
+        ["Magie", "Mondes imaginaires", "Quêtes", "Merveilleux"], FAMILY_OF["fantastique"]),
     "horreur": entry(
         "Amateur·rice de frissons", "Tu aimes avoir peur, bien installé·e dans ton fauteuil.",
-        ["Frissons", "Peur", "Surnaturel", "Ténèbres"]),
+        ["Frissons", "Peur", "Surnaturel", "Ténèbres"], FAMILY_OF["horreur"]),
     "roman historique": entry(
         "Voyageur·se du temps", "Tu aimes revivre le passé à travers des destins marquants.",
-        ["Histoire", "Époques", "Destins", "Mémoire"]),
+        ["Histoire", "Époques", "Destins", "Mémoire"], FAMILY_OF["roman historique"]),
     "romance": entry(
         "Cœur tendre", "Tu aimes les histoires d'amour qui font battre le cœur.",
-        ["Amour", "Émotions", "Relations", "Feel good"]),
+        ["Amour", "Émotions", "Relations", "Feel good"], FAMILY_OF["romance"]),
     "aventure": entry(
         "Esprit d'aventure", "Tu aimes partir à l'aventure et vivre des péripéties.",
-        ["Voyages", "Péripéties", "Exploration", "Héros"]),
+        ["Voyages", "Péripéties", "Exploration", "Héros"], FAMILY_OF["aventure"]),
     "biographie": entry(
         "Passeur·se de vies", "Tu aimes les vraies histoires et les parcours inspirants.",
-        ["Vies réelles", "Témoignages", "Parcours", "Inspiration"]),
+        ["Vies réelles", "Témoignages", "Parcours", "Inspiration"], FAMILY_OF["biographie"]),
     "essai": entry(
         "Esprit critique", "Tu aimes les idées, les débats et apprendre en lisant.",
-        ["Idées", "Société", "Savoir", "Débats"]),
+        ["Idées", "Société", "Savoir", "Débats"], FAMILY_OF["essai"]),
 }
 
 AMBIANCE_PROFILE_LABELS = {
     "sombre": entry(
         "Âme nocturne", "Tu aimes les récits sombres qui explorent la part d'ombre.",
-        ["Noirceur", "Intensité", "Mystère", "Ombres"]),
+        ["Noirceur", "Intensité", "Mystère", "Ombres"], "suspense"),
     "tendue": entry(
         "Cœur battant", "Tu aimes les lectures qui te gardent sous tension.",
-        ["Tension", "Rythme", "Suspense", "Adrénaline"]),
+        ["Tension", "Rythme", "Suspense", "Adrénaline"], "suspense"),
     "legere": entry(
         "Bonne humeur", "Tu aimes les lectures légères qui donnent le sourire.",
-        ["Humour", "Légèreté", "Feel good", "Détente"]),
+        ["Humour", "Légèreté", "Feel good", "Détente"], "psychologie"),
     "intimiste": entry(
         "Lecteur·rice sensible", "Tu aimes les récits intimes, au plus près des personnages.",
-        ["Intime", "Émotions", "Introspection", "Sensibilité"]),
+        ["Intime", "Émotions", "Introspection", "Sensibilité"], "psychologie"),
     "epique": entry(
         "Souffle épique", "Tu aimes les grandes fresques et les destins héroïques.",
-        ["Fresques", "Héros", "Grandeur", "Aventure"]),
+        ["Fresques", "Héros", "Grandeur", "Aventure"], "histoire"),
     "poetique": entry(
         "Âme poétique", "Tu aimes les mots qui chantent et les récits qui font rêver.",
-        ["Poésie", "Rêverie", "Style", "Onirisme"]),
+        ["Poésie", "Rêverie", "Style", "Onirisme"], "imaginaire"),
 }
 
-EXPLORER_LABEL = entry(
-    "Lecteur·rice en exploration",
+ECLECTIC_LABEL = entry(
+    "Éclectique",
     "Tu es ouvert·e à tout : on va découvrir ensemble ce que tu aimes.",
-    ["Découverte", "Curiosité", "Ouverture", "Surprises"])
+    ["Découverte", "Curiosité", "Ouverture", "Surprises"], ECLECTIC)
 
 
-def choose_label(genres, ambiances):
-    """Paire si ses deux genres sont choisis, sinon premier genre, sinon ambiance
-    dominante, sinon lecteur·rice en exploration."""
+def is_eclectic(q1_codes):
+    """Vrai si TIE_LIMIT familles ou plus sont à égalité en tête des choix de q1
+    (chaque groupe ou catégorie cochée compte pour une voix dans sa famille)."""
+    votes = Counter(FAMILY_OF[GROUPS[c][1][0] if c in GROUPS else c] for c in q1_codes)
+    if not votes:
+        return False
+    top = max(votes.values())
+    return sum(1 for v in votes.values() if v == top) >= TIE_LIMIT
+
+
+def choose_label(genres, ambiances, q1_codes=()):
+    """Éclectique si 3 familles ou plus à égalité, sinon paire si ses deux genres sont
+    choisis, sinon premier genre, sinon ambiance dominante, sinon éclectique.
+    La famille du profil est celle du libellé retenu."""
+    if is_eclectic(q1_codes):
+        return ECLECTIC_LABEL
     for pair, label in PAIR_LABELS:
         if all(g in genres for g in pair):
             return label
@@ -145,7 +173,7 @@ def choose_label(genres, ambiances):
         return GENRE_LABELS[next(iter(genres))]
     if ambiances:
         return AMBIANCE_PROFILE_LABELS[max(ambiances, key=ambiances.get)]
-    return EXPLORER_LABEL
+    return ECLECTIC_LABEL
 
 
 # --- Construction du profil --------------------------------------------------------------
@@ -164,9 +192,21 @@ def as_code(answer):
     return codes[0] if codes else None
 
 
+def expand_groups(codes):
+    """Groupes affichés (q1, q8) -> catégories du catalogue, sans doublon.
+    Un code de catégorie est accepté tel quel ; les autres codes sont ignorés."""
+    categories = []
+    for code in codes:
+        for cat in GROUPS[code][1] if code in GROUPS else [code]:
+            if cat in CATEGORY_LABELS and cat not in categories:
+                categories.append(cat)
+    return categories
+
+
 def build_profile(answers):
     """answers = {qid: liste de codes ou code} -> profil JSON-sérialisable."""
-    genres = {c: 1.0 for c in as_list(answers.get("q1")) if c in CATEGORY_LABELS}
+    q1_codes = [c for c in as_list(answers.get("q1")) if c in GROUPS or c in CATEGORY_LABELS]
+    genres = {c: 1.0 for c in expand_groups(q1_codes)}
     themes = {c: 1.0 for c in as_list(answers.get("q2")) if c in THEME_LABELS}
     ambiances = {c: 1.0 for c in as_list(answers.get("q3")) if c in AMBIANCE_LABELS}
     length = as_code(answers.get("q5"))
@@ -178,7 +218,7 @@ def build_profile(answers):
         "q5": length in LENGTHS, "q6": period in (*PERIODS, "classiques"),
     }
     confidence = sum(QUESTIONS_BY_ID[q]["weight"] for q in SCORED if answered[q]) / TOTAL_WEIGHT
-    label = choose_label(genres, ambiances)
+    label = choose_label(genres, ambiances, q1_codes)
 
     return {
         "genres": genres,
@@ -188,7 +228,7 @@ def build_profile(answers):
         "length": length,
         "period": period,
         "languages": as_list(answers.get("q7")),
-        "exclusions": [c for c in as_list(answers.get("q8")) if c in CATEGORY_LABELS],
+        "exclusions": expand_groups(as_list(answers.get("q8"))),
         "priority": as_code(answers.get("q9")),
         "discovery": DISCOVERY.get(discovery, 0.0),
         "answered": answered,  # dimension renseignée au questionnaire (sinon exclue de P)
@@ -197,6 +237,7 @@ def build_profile(answers):
         "label": label["label"],
         "label_description": label["description"],
         "label_tags": label["tags"],
+        "family": label["family"],
     }
 
 
@@ -411,25 +452,27 @@ def adjust(prefs, initial, key, delta):
     prefs[key] = round(value, 4)
 
 
-def update_after_rating(profile, book, rating):
-    """Note 4-5 : +0,05 sur les genres, thèmes et ambiance du livre ; 1-2 : −0,05 ; 3 : rien.
+def recompute_learned(profile, rated_books):
+    """Recalcule genres, thèmes et ambiances depuis les valeurs initiales et toutes les
+    notes : rated_books = [(livre, note)]. Note 4-5 : +0,05 sur les genres, thèmes et
+    ambiance du livre ; 1-2 : −0,05 ; 3 : rien. Modifier une note ne cumule donc jamais.
 
-    Les valeurs apprises sont toujours conservées, mais une dimension neutre au
-    questionnaire reste exclue de P (profile["answered"]).
+    Les valeurs apprises sont conservées, mais une dimension neutre au questionnaire
+    reste exclue de P (profile["answered"]).
     """
-    if rating >= 4:
-        delta = RATING_STEP
-    elif rating <= 2:
-        delta = -RATING_STEP
-    else:
-        return profile
     initial = profile["initial"]
-    for key in book_categories(book):
-        adjust(profile["genres"], initial["genres"], key, delta)
-    for key in book["themes"]:
-        adjust(profile["themes"], initial["themes"], key, delta)
-    if book["ambiance"]:
-        adjust(profile["ambiances"], initial["ambiances"], book["ambiance"], delta)
+    for dim in ("genres", "themes", "ambiances"):
+        profile[dim] = copy.deepcopy(initial[dim])
+    for book, rating in rated_books:
+        if 2 < rating < 4:
+            continue
+        delta = RATING_STEP if rating >= 4 else -RATING_STEP
+        for key in book_categories(book):
+            adjust(profile["genres"], initial["genres"], key, delta)
+        for key in book["themes"]:
+            adjust(profile["themes"], initial["themes"], key, delta)
+        if book["ambiance"]:
+            adjust(profile["ambiances"], initial["ambiances"], book["ambiance"], delta)
     return profile
 
 
@@ -437,8 +480,8 @@ def update_after_rating(profile, book, rating):
 
 DEMO_PROFILES = [
     ("Profil 1", {
-        "q1": ["thriller", "policier"], "q2": ["crime", "secret"], "q3": ["tendue"],
-        "q4": [NEUTRAL], "q5": "moyen", "q6": "recents", "q7": [NEUTRAL], "q8": ["horreur"],
+        "q1": ["thriller_polar"], "q2": ["crime", "secret"], "q3": ["tendue"],
+        "q4": [NEUTRAL], "q5": "moyen", "q6": "recents", "q7": [NEUTRAL], "q8": ["fantasy"],
         "q9": "themes", "q10": "mixte",
     }),
     ("Profil 2", {
@@ -462,7 +505,7 @@ def demo():
         elapsed = (time.perf_counter() - start) * 1000
 
         print(f"=== {name} ===")
-        print(f"Libellé : {profile['label']}")
+        print(f"Libellé : {profile['label']} (famille {profile['family']})")
         print(f"Description : {profile['label_description']}")
         print(f"Tags : {', '.join(profile['label_tags'])}")
         print(f"Confiance : {profile['confidence'] * 100:.1f} %\n")
