@@ -1,6 +1,6 @@
 # _CONTEXT.md — « Et maintenant, je lis quoi ? »
 
-Dernière mise à jour : 7 octobre 2026 (v4)
+Dernière mise à jour : 7 octobre 2026 (v5)
 
 ## Rôles
 - Mathias : pilote, ne code pas. Valide les décisions, copie les prompts dans Claude Code (VSCode), rapporte les résultats.
@@ -94,12 +94,19 @@ Environnement : macOS, Python 3.11 via `/opt/homebrew/bin/python3.11`, `.venv`. 
 - [x] 9a. Seed : 46 comptes fictifs (is_demo, mdp demo1234, <pseudo>@exemple.fr), deux vagues à graines fixes 2026/2027 ; toutes les familles ≥ 6 contributeurs ; 36 actifs/semaine ; livres du moment par famille (MOMENT_PICKS). `python -m src.seed --reset`.
 - [x] Masquage : books.hidden, src/hidden_books.txt, `python -m src.hide "<titre|id>"`, --apply, --list ; 19 livres masqués ; `python -m src.suspects` (trop large, 435 résultats).
 - [x] 9b. Statistiques (src/stats.py, /statistiques) : 7 indicateurs, None jamais 0.
-- [ ] Test visuel complet par Mathias (compte suspense)
-- [ ] 10. Évaluation (src/evaluate.py → docs/evaluation.md + evaluation_humaine.md)
-- [ ] 11. README, GitHub, schéma d'architecture, slides RNCP, retour d'expérience
-- [ ] Charte graphique (Mathias fournira ses choix)
-- Reporté : bilan PNG, manifest PWA, suppression de compte
-- Tests : 200 au dernier comptage.
+- [x] Test visuel par Mathias → corrections : masquage ("L'essai", Lovecraft id 430…), boutons et titres accueil, badges d'affinité.
+- [x] 10. Évaluation (src/evaluate.py → docs/evaluation.md) : catalogue 1 290 non masqués ✅ ; recherche 20/20 (après apostrophes + approché mots ≥ 5 lettres) ✅ ; similar_books 30/30 et recommend 46/46 ✅ ; p95 2-20 ms ✅ ; diversité 36 % → 49 % (max 3 livres/catégorie) ; cohérence humaine : docs/evaluation_humaine.md (8 profils) à remplir par le groupe ⏳.
+- [x] 11a. Charte : violet #7B61FF, rose #FF6F96, encre #1E1B3A, Nunito 500/900, logo extrait de docs/charte/logo.pdf (app/static/img/logo.png, favicon).
+- [x] 11b. /profil fusionné avec les statistiques (/statistiques redirige) : profil dominant, anneau de confiance, compteurs, 3 raccourcis, stats (livre préféré, pages/semaine, livres du mois, note moyenne, pages, plus gros livre, genres en barres, thèmes/ambiances). Sans bloc « Partage ton bilan ».
+- [x] Mobile 360 px : en-tête réduit, barre de navigation basse, filtres plein écran, aucun défilement horizontal.
+- [x] Affinité : « S % d'affinité » sur toutes les cartes et fiches, couleur par seuils 80/60/40.
+- [x] seed --historique <pseudo> [--force] : historique réaliste pour un compte réel (10 terminés / 2 en cours / 3 à lire), verrou transactionnel. Appliqué à toto.
+- [ ] 12. README complet, docs/architecture.md (Mermaid), requirements figé — en cours
+- [ ] GitHub : dépôt privé `livres-reco`, URL à donner au prof
+- [ ] Grille d'évaluation humaine remplie par le groupe (critère ≥ 3/5 cohérentes par profil)
+- [ ] Slides RNCP : Définition fonctionnelle, Cahier des charges, Conception des solutions d'architecture technique (schéma), Démonstration, Retour d'expérience ; dépôt Dropbox avec noms des participants
+- Reporté : bilan PNG 1080×1350, manifest PWA, suppression de compte
+- Tests : 214 au dernier comptage.
 
 ## Retour d'expérience (matière pour la soutenance)
 - Google Books : max 20 résultats/page malgré maxResults=40 ; `subject:` seul renvoie 0 ; `langRestrict=fr` laisse passer ~30 % de non-français ; ne distingue pas fiction et études → 6 passes de nettoyage.
@@ -107,12 +114,19 @@ Environnement : macOS, Python 3.11 via `/opt/homebrew/bin/python3.11`, `.venv`. 
 - Le barème « donnée manquante = dimension ignorée » avantage les livres peu renseignés → départage par nombre de dimensions calculées.
 - Streamlit abandonné dès que les maquettes sont arrivées ; Flask + Jinja2 choisi.
 - CDC v2 (démo ChatGPT) trié plutôt qu'appliqué : simplicité exigée par le cours.
+- Recherche par sous-chaîne exacte : 15/20 seulement ; apostrophes typographiques et recherche approchée → 20/20.
+- Barème strict → 5 livres de la même catégorie (1,8 catégorie sur 5) ; règle de diversité « max 3 par catégorie » → 49 %.
+- Mise à jour du profil par incréments successifs dépendait de l'ordre des notes → recalcul depuis zéro à chaque note.
+- Course entre deux lancements du seed → vérification dans la transaction (BEGIN IMMEDIATE).
+- Catalogue : ne jamais relancer clean.py une fois des lectures créées (ids) ; masquage via src.hide.
+- Méthode : un prompt = un module, /clear entre modules, Claude Code rapporte et propose, le chat tranche. ~30 prompts, 214 tests, une journée.
 
 ## Points ouverts
 - Catalogue : ne plus relancer clean.py (ids référencés par les lectures) ; masquer via src.hide uniquement.
 - recompute_learned : somme des écarts puis plafond ±0,30 une seule fois (indépendant de l'ordre des notes).
 - Le serveur Flask garde l'index TF-IDF en mémoire : le relancer après un masquage.
-- Comptes réels de Mathias : toto (éclectique) ; créer un compte suspense pour la soutenance.
+- Comptes réels de Mathias : toto (éclectique, historique généré) ; un compte suspense serait plus démonstratif pour la soutenance (seed --historique applicable).
+- Démo : la grille humaine est à faire remplir par les membres du groupe ; décision à prendre sur le bloc « Partage ton bilan » (PNG) après l'évaluation.
 
 ## Règles de travail
 - Un prompt = un module. `/clear` au changement de module, pas pour une correction du module en cours.
