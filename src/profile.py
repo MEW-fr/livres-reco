@@ -17,7 +17,7 @@ from datetime import date
 
 from src import engine
 from src.db import DB_PATH
-from src.engine import book_categories, join_fr
+from src.engine import book_categories, join_fr, normalize
 from src.questions import AMBIANCE_LABELS, CATEGORY_LABELS, NEUTRAL, QUESTIONS_BY_ID, THEME_LABELS
 
 P_WEIGHT = 0.84        # S = 0,84 × P + R + D
@@ -353,10 +353,16 @@ def explain(profile, book, detail):
     return "Recommandé pour élargir tes horizons de lecture."
 
 
+def first_author(book):
+    """Premier auteur normalisé (minuscules, sans accents), ou None."""
+    return normalize(book["authors"][0]).strip() if book["authors"] else None
+
+
 def recommend(profile, n=5, filters=None, read_ids=(), group_pop=None, db_path=DB_PATH):
     """Les n livres de meilleur score S : [{book, score, P, R, D, N, detail, explanation}].
 
     Écarte les genres à éviter (q8, prioritaires sur q1) et les livres déjà lus.
+    Un seul livre par premier auteur.
     group_pop : {id livre: popularité 0-100 chez les lecteurs du même profil} ou None.
     """
     index = engine.get_index(db_path)
@@ -378,9 +384,19 @@ def recommend(profile, n=5, filters=None, read_ids=(), group_pop=None, db_path=D
     # Départage : S, nombre de dimensions calculées, note moyenne (≥ 5 avis), id croissant.
     scored.sort(key=lambda item: item[:4], reverse=True)
 
-    return [{"book": book, "score": S, "P": d["P"], "R": d["R"], "D": d["D"], "N": d["N"],
-             "detail": d, "explanation": explain(profile, book, d)}
-            for S, _, _, _, book, d in scored[:n]]
+    # Un livre par auteur : les suivants du même premier auteur passent leur tour.
+    results, seen_authors = [], set()
+    for S, _, _, _, book, d in scored:
+        if len(results) == n:
+            break
+        author = first_author(book)
+        if author in seen_authors:
+            continue
+        if author:
+            seen_authors.add(author)
+        results.append({"book": book, "score": S, "P": d["P"], "R": d["R"], "D": d["D"],
+                        "N": d["N"], "detail": d, "explanation": explain(profile, book, d)})
+    return results
 
 
 # --- Évolution après une note ---------------------------------------------------------------

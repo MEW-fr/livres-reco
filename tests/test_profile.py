@@ -17,7 +17,7 @@ def answers(**kwargs):
 
 def book(id_=1, main="thriller", cats=("thriller",), themes=(), ambiance=None, year=2020,
          pages=300):
-    return {"id": id_, "title": f"Livre {id_}", "authors": ["Auteur"], "main_category": main,
+    return {"id": id_, "title": f"Livre {id_}", "authors": [f"Auteur {id_}"], "main_category": main,
             "categories": list(cats), "themes": list(themes), "ambiance": ambiance,
             "published_year": year, "page_count": pages, "avg_rating": None,
             "ratings_count": 0, "description": ""}
@@ -191,6 +191,18 @@ def test_tie_break(db):
     assert [r["score"] for r in results] == [84.0] * 3
     # 5 : 3 dimensions ; 6 et 1 : 1 dimension, 6 a une note fiable (12 avis)
     assert [r["book"]["id"] for r in results] == [5, 6, 1]
+
+
+def test_one_book_per_author(db):
+    with get_connection(db) as conn:
+        conn.execute("""UPDATE books SET authors = '["Émile Zola"]' WHERE id = 1""")
+        conn.execute("""UPDATE books SET authors = '["emile zola", "Autre"]' WHERE id = 4""")
+    engine.reset_cache()
+    p = prof.build_profile(answers(q1=["thriller", "policier"], q2=["crime"]))
+    results = prof.recommend(p, n=3, db_path=db)
+    ids = [r["book"]["id"] for r in results]
+    assert ids[0] == 4 and 1 not in ids   # même premier auteur une fois normalisé
+    assert len(ids) == 3                  # les livres suivants complètent la liste
 
 
 # --- Mise à jour après une note --------------------------------------------------------------
