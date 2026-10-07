@@ -2,7 +2,7 @@
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "books.db"
@@ -53,13 +53,18 @@ CREATE TABLE IF NOT EXISTS readings (
     id INTEGER PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id),
     book_id INTEGER NOT NULL REFERENCES books(id),
-    start_date TEXT,
+    rank INTEGER,         -- position dans la pile à lire ; null une fois commencé
+    start_date TEXT,      -- AAAA-MM-JJ
     end_date TEXT,
     rating INTEGER,
-    comment TEXT
+    comment TEXT,
+    created_at TEXT,
+    updated_at TEXT,
+    UNIQUE (user_id, book_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_readings_user ON readings(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_readings_rank ON readings(user_id, rank);
 CREATE INDEX IF NOT EXISTS idx_readings_book ON readings(book_id);
 CREATE INDEX IF NOT EXISTS idx_readings_start ON readings(start_date);
 """
@@ -75,7 +80,39 @@ def get_connection(db_path=DB_PATH):
 
 
 BOOKS_NEW_COLUMNS = {"categories", "themes", "ambiance"}
-USERS_NEW_COLUMNS = {"email": "TEXT", "profile_confidence": "REAL", "profile_family": "TEXT"}
+USERS_NEW_COLUMNS = {"email": "TEXT", "profile_confidence": "REAL", "profile_family": "TEXT",
+                     "filters": "TEXT"}  # filters : JSON (app.filters)
+READINGS_COLUMNS = "id, user_id, book_id, start_date, end_date, rating, comment"
+
+
+def migrate_readings(conn):
+    """Ancienne table readings (sans rank ni contrainte d'unicité) -> nouveau schéma.
+
+    Les lignes sont recopiées ; pour un même couple (utilisateur, livre), seule la plus
+    récente est gardée (la contrainte UNIQUE l'impose). Les livres non commencés
+    reçoivent un rang dans la pile, dans l'ordre d'ajout.
+    """
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(readings)")}
+    if not columns or "rank" in columns:
+        return
+    conn.execute("ALTER TABLE readings RENAME TO readings_old")
+    for index in ("idx_readings_user", "idx_readings_book", "idx_readings_start"):
+        conn.execute(f"DROP INDEX IF EXISTS {index}")
+    conn.executescript(SCHEMA)
+    now = datetime.now().isoformat(timespec="seconds")
+    conn.execute(
+        f"INSERT INTO readings ({READINGS_COLUMNS}, created_at, updated_at)"
+        f" SELECT {READINGS_COLUMNS}, ?, ? FROM readings_old"
+        " WHERE id IN (SELECT MAX(id) FROM readings_old GROUP BY user_id, book_id)",
+        (now, now),
+    )
+    conn.execute("DROP TABLE readings_old")
+    pile = conn.execute("SELECT id, user_id FROM readings WHERE start_date IS NULL"
+                        " ORDER BY user_id, id").fetchall()
+    ranks = {}
+    for row in pile:
+        ranks[row["user_id"]] = ranks.get(row["user_id"], 0) + 1
+        conn.execute("UPDATE readings SET rank = ? WHERE id = ?", (ranks[row["user_id"]], row["id"]))
 
 
 def init_db(db_path=DB_PATH):
@@ -88,6 +125,7 @@ def init_db(db_path=DB_PATH):
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(books)")}
         if columns and not BOOKS_NEW_COLUMNS <= columns:
             conn.execute("DROP TABLE books")
+        migrate_readings(conn)
         conn.executescript(SCHEMA)
         # Colonnes ajoutées à users après coup : ajoutées sans perdre les comptes.
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
@@ -160,3 +198,140 @@ def find_user(login, db_path=DB_PATH):
 def get_user(user_id, db_path=DB_PATH):
     with get_connection(db_path) as conn:
         return conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+
+
+def get_filters(user_id, db_path=DB_PATH):
+    """Filtres enregistrés (dict), ou None s'ils n'ont jamais été créés."""
+    with get_connection(db_path) as conn:
+        row = conn.execute("SELECT filters FROM users WHERE id = ?", (user_id,)).fetchone()
+    return json.loads(row["filters"]) if row and row["filters"] else None
+
+
+def save_filters(user_id, filters, db_path=DB_PATH):
+    with get_connection(db_path) as conn:
+        conn.execute("UPDATE users SET filters = ? WHERE id = ?",
+                     (json.dumps(filters, ensure_ascii=False), user_id))
+
+
+# --- Lectures -----------------------------------------------------------------------------
+# Statut dérivé des dates : à lire (pas de début), en cours (début sans fin), terminé (fin).
+
+TO_READ, READING, FINISHED = "à lire", "en cours", "terminé"
+
+
+def reading_status(reading):
+    if reading["end_date"]:
+        return FINISHED
+    return READING if reading["start_date"] else TO_READ
+
+
+def parse_day(value):
+    """'AAAA-MM-JJ' -> date, sinon ValueError avec un message affichable."""
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError):
+        raise ValueError("Cette date n'est pas valide.") from None
+
+
+def now_iso():
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def get_reading(user_id, book_id, db_path=DB_PATH):
+    """Lecture de ce livre par cet utilisateur (dict avec "status"), ou None."""
+    with get_connection(db_path) as conn:
+        row = conn.execute("SELECT * FROM readings WHERE user_id = ? AND book_id = ?",
+                           (user_id, book_id)).fetchone()
+    return dict(row, status=reading_status(row)) if row else None
+
+
+def add_to_pile(user_id, book_id, db_path=DB_PATH):
+    """Ajoute le livre en fin de pile à lire. False s'il est déjà suivi (pas de doublon)."""
+    with get_connection(db_path) as conn:
+        now = now_iso()
+        try:
+            conn.execute(
+                "INSERT INTO readings (user_id, book_id, rank, created_at, updated_at)"
+                " VALUES (?, ?, (SELECT COALESCE(MAX(rank), 0) + 1 FROM readings"
+                " WHERE user_id = ?), ?, ?)",
+                (user_id, book_id, user_id, now, now),
+            )
+        except sqlite3.IntegrityError:
+            return False
+    return True
+
+
+def start_reading(user_id, book_id, start_date, today=None, db_path=DB_PATH):
+    """Commence un livre (depuis la pile ou directement). La date ne peut pas être future.
+
+    False si le livre est déjà commencé ou terminé ; ValueError si la date est invalide.
+    """
+    day = parse_day(start_date)
+    if day > (today or date.today()):
+        raise ValueError("La date de début ne peut pas être dans le futur.")
+    reading = get_reading(user_id, book_id, db_path)
+    if reading and reading["status"] != TO_READ:
+        return False
+    with get_connection(db_path) as conn:
+        now = now_iso()
+        if reading is None:
+            try:
+                conn.execute(
+                    "INSERT INTO readings (user_id, book_id, start_date, created_at, updated_at)"
+                    " VALUES (?, ?, ?, ?, ?)", (user_id, book_id, day.isoformat(), now, now))
+            except sqlite3.IntegrityError:  # double soumission simultanée
+                return False
+            return True
+        updated = conn.execute(
+            "UPDATE readings SET start_date = ?, rank = NULL, updated_at = ?"
+            " WHERE id = ? AND start_date IS NULL", (day.isoformat(), now, reading["id"]))
+        if updated.rowcount:
+            # La pile se resserre : les livres suivants avancent d'un rang (ordre croissant
+            # pour ne jamais violer l'unicité du rang).
+            later = conn.execute("SELECT id FROM readings WHERE user_id = ? AND rank > ?"
+                                 " ORDER BY rank", (user_id, reading["rank"])).fetchall()
+            for row in later:
+                conn.execute("UPDATE readings SET rank = rank - 1 WHERE id = ?", (row["id"],))
+    return bool(updated.rowcount)
+
+
+def finish_reading(user_id, book_id, end_date, today=None, db_path=DB_PATH):
+    """Termine un livre en cours : début ≤ fin ≤ aujourd'hui, sinon ValueError.
+
+    False si le livre n'est pas en cours (absent, à lire ou déjà terminé).
+    """
+    day = parse_day(end_date)
+    reading = get_reading(user_id, book_id, db_path)
+    if reading is None or reading["status"] != READING:
+        return False
+    if day < date.fromisoformat(reading["start_date"]):
+        raise ValueError("La date de fin ne peut pas précéder la date de début.")
+    if day > (today or date.today()):
+        raise ValueError("La date de fin ne peut pas être dans le futur.")
+    with get_connection(db_path) as conn:
+        updated = conn.execute(
+            "UPDATE readings SET end_date = ?, updated_at = ? WHERE id = ? AND end_date IS NULL",
+            (day.isoformat(), now_iso(), reading["id"]))
+    return bool(updated.rowcount)
+
+
+LIST_ORDER = {
+    TO_READ: ("r.start_date IS NULL", "r.rank"),
+    READING: ("r.start_date IS NOT NULL AND r.end_date IS NULL", "r.start_date DESC, r.id DESC"),
+    FINISHED: ("r.end_date IS NOT NULL", "r.end_date DESC, r.id DESC"),
+}
+
+
+def list_readings(user_id, status=None, db_path=DB_PATH):
+    """Lectures de l'utilisateur avec le titre, les auteurs et la couverture du livre.
+
+    status : TO_READ (par rang), READING ou FINISHED (plus récent d'abord), None = toutes.
+    """
+    where, order = LIST_ORDER[status] if status else ("1", "r.updated_at DESC, r.id DESC")
+    with get_connection(db_path) as conn:
+        rows = conn.execute(
+            "SELECT r.*, b.title, b.authors, b.isbn, b.thumbnail FROM readings r"
+            f" JOIN books b ON b.id = r.book_id WHERE r.user_id = ? AND {where}"
+            f" ORDER BY {order}", (user_id,)).fetchall()
+    return [dict(row, status=reading_status(row),
+                 authors=json.loads(row["authors"]) if row["authors"] else []) for row in rows]

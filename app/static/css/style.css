@@ -95,6 +95,12 @@ a { color: var(--violet); font-weight: 700; }
 }
 .btn-ghost { background: transparent; color: var(--muted); }
 .btn-ghost:hover { color: var(--violet); }
+.btn-lime {
+  background: var(--lime);
+  color: var(--ink);
+  box-shadow: 0 4px 0 #B6D33F;
+}
+.btn-lime:hover { transform: translateY(-1px); }
 .btn-block { width: 100%; }
 .btn-small { padding: 8px 14px; font-size: 0.95rem; }
 
@@ -148,7 +154,8 @@ a { color: var(--violet); font-weight: 700; }
 .form { display: grid; gap: 14px; margin: 20px 0; }
 .form label { display: grid; gap: 6px; font-weight: 700; }
 .form small { color: var(--muted); font-weight: 400; }
-input[type="text"], input[type="email"], input[type="password"], input:not([type]) {
+input[type="text"], input[type="email"], input[type="password"], input[type="date"],
+input:not([type]) {
   width: 100%;
   padding: 12px 14px;
   border: 2px solid var(--line);
@@ -353,6 +360,196 @@ input:focus { outline: none; border-color: var(--violet); }
 .home-title { font-size: clamp(2.2rem, 5vw, 3.8rem); }
 .section-card { margin-top: 32px; padding: 28px; border: 2px solid var(--line); }
 
+.notice {
+  background: #F4FBD9;
+  border: 1px solid #D9EE8C;
+  color: #4B5A12;
+  border-radius: 12px;
+  padding: 10px 16px;
+  margin: 0 0 18px;
+}
+.notice p { margin: 4px 0; }
+
+/* --- En-tête : recherche et filtres ----------------------------------------------- */
+
+.topbar { gap: 16px; }
+.search-bar {
+  flex: 1;
+  max-width: 420px;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: var(--violet-soft);
+}
+.search-icon { color: var(--violet); font-size: 1.2rem; }
+.search-bar input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 12px 0;
+  background: transparent;
+  font: inherit;
+  color: var(--ink);
+}
+.search-bar input:focus { outline: none; }
+.search-bar:focus-within { box-shadow: 0 0 0 2px var(--violet); }
+
+.active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px clamp(16px, 2vw, 24px);
+  border-bottom: 1px solid var(--line);
+}
+.chip {
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: var(--violet-soft);
+  color: var(--violet-dark);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.filters-overlay { position: fixed; inset: 0; background: rgba(38, 33, 63, 0.3); z-index: 10; }
+.filters-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 11;
+  width: min(420px, 100%);
+  overflow-y: auto;
+  padding: 24px;
+  background: var(--white);
+  box-shadow: -8px 0 32px rgba(76, 54, 160, 0.18);
+  border-radius: 24px 0 0 24px;
+}
+.filters-head { display: flex; justify-content: space-between; align-items: center; }
+.filters-head h2 { margin: 0; }
+.icon-btn { border: 0; background: none; font-size: 1.8rem; color: var(--muted); cursor: pointer; }
+.filters-form fieldset { border: 0; padding: 0; margin: 0 0 20px; }
+.filters-form legend { font-family: var(--title); font-weight: 700; font-size: 1.1rem; margin-bottom: 4px; }
+.hint { color: var(--muted); font-size: 0.85rem; margin: 0 0 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-check input { position: absolute; opacity: 0; pointer-events: none; }
+.chip-check span {
+  display: inline-block;
+  padding: 6px 12px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.chip-check input:checked + span { border-color: var(--violet); background: var(--violet-soft); }
+.chip-out input:checked + span { border-color: var(--pink); background: #FFECF1; text-decoration: line-through; }
+.chip-check input:focus-visible + span { outline: 3px solid var(--violet); outline-offset: 2px; }
+.filters-actions {
+  position: sticky;
+  bottom: -24px;
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 0;
+  background: var(--white);
+}
+
+/* --- Couverture et carte livre ----------------------------------------------------- */
+
+.cover {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 6px 6px 0 rgba(38, 33, 63, 0.08);
+}
+.cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cover-card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  border: 3px solid rgba(0, 0, 0, 0.08);
+  border-radius: 18px;
+}
+.cover-author { font-family: var(--title); font-size: 0.7rem; letter-spacing: 1px; font-weight: 700; opacity: 0.8; }
+.cover-face { margin: auto; font-size: 1.1rem; }
+.cover-title {
+  font-family: var(--title);
+  font-weight: 700;
+  font-size: 1.25rem;
+  line-height: 1.05;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cover-star { position: absolute; right: 12px; bottom: 10px; opacity: 0.6; }
+.cover-0 .cover-card { background: #DDF27E; color: #2F3A0A; }
+.cover-1 .cover-card { background: #FF9BB5; color: #4A1424; }
+.cover-2 .cover-card { background: #D9D0FF; color: #2E2266; }
+.cover-3 .cover-card { background: #47425F; color: var(--white); }
+.cover-4 .cover-card { background: #FFE5AE; color: #4A3510; }
+
+.book-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 24px 20px;
+  margin-top: 20px;
+}
+.book-card { min-width: 0; }
+.book-link { color: var(--ink); text-decoration: none; }
+.book-link:hover .book-title { color: var(--violet); }
+.book-title {
+  margin: 12px 0 2px;
+  font-family: var(--title);
+  font-size: 1.05rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.book-author { margin: 0; color: var(--muted); font-size: 0.9rem; }
+.book-note { margin: 6px 0 0; font-size: 0.85rem; color: var(--violet-dark); }
+
+/* --- Recherche ------------------------------------------------------------------- */
+
+.page-title { font-size: clamp(2rem, 4vw, 3rem); }
+.empty-state { padding: 32px; text-align: center; }
+.empty-state .cover-face { display: block; font-size: 2rem; margin-bottom: 8px; color: var(--muted); }
+.pagination { display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 32px; }
+
+/* --- Fiche livre ----------------------------------------------------------------- */
+
+.book-page { display: grid; grid-template-columns: 260px 1fr; gap: 40px; align-items: start; }
+.book-page-cover .cover-title { font-size: 1.9rem; }
+.book-page-authors { font-size: 1.15rem; color: var(--muted); font-weight: 700; margin: 0 0 16px; }
+.reason {
+  display: inline-block;
+  margin: 0 0 20px;
+  padding: 8px 16px;
+  border-radius: 14px;
+  background: var(--violet-soft);
+  color: var(--violet-dark);
+  font-weight: 700;
+}
+.reading-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; padding: 20px; margin-bottom: 28px; }
+.reading-actions form { margin: 0; }
+.date-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.date-form p { flex-basis: 100%; margin: 0; }
+.date-form label { display: grid; gap: 4px; font-weight: 700; font-size: 0.9rem; }
+.section-title { font-size: 1.3rem; }
+.description { white-space: pre-line; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 20px; margin: 24px 0 0; }
+.facts dt { font-weight: 800; }
+.facts dd { margin: 0; color: var(--muted); }
+
 /* --- Mobile ---------------------------------------------------------------------- */
 
 @media (max-width: 720px) {
@@ -366,4 +563,10 @@ input:focus { outline: none; border-color: var(--violet); }
   .nav-item { padding: 10px 8px; text-align: center; font-size: 0.9rem; }
   .profile-card { border-radius: 28px; padding-top: 44px; }
   .topbar .btn-small { padding: 6px 10px; font-size: 0.85rem; }
+  .topbar { flex-wrap: wrap; }
+  .search-bar { order: 3; flex-basis: 100%; max-width: none; }
+  .book-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 14px; }
+  .book-page { grid-template-columns: 1fr; gap: 24px; }
+  .book-page-cover { max-width: 220px; }
+  .filters-panel { border-radius: 0; }
 }

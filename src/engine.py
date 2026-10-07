@@ -55,10 +55,12 @@ class Filters:
     """Contraintes appliquées aux candidats avant le classement.
 
     Un critère vide (None ou ensemble vide) n'est pas appliqué. Un livre sans
-    année est écarté dès qu'un critère d'année est donné.
+    année (ou sans nombre de pages) est écarté dès qu'un critère d'année (ou de
+    pages) est donné. L'exclusion de catégories prime sur l'inclusion.
     """
     categories_in: set = field(default_factory=set)   # au moins une de ces catégories
     categories_out: set = field(default_factory=set)  # aucune de ces catégories
+    languages: set = field(default_factory=set)       # codes langue acceptés (books.language)
     year_min: int | None = None
     year_max: int | None = None
     max_pages: int | None = None
@@ -71,6 +73,8 @@ class Filters:
         if self.categories_out and cats & set(self.categories_out):
             return False
         if book["id"] in self.exclude_ids:
+            return False
+        if self.languages and book["language"] not in self.languages:
             return False
         year, pages = book["published_year"], book["page_count"]
         if self.year_min is not None and (year is None or year < self.year_min):

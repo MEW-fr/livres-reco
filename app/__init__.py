@@ -27,8 +27,10 @@ def create_app(test_config=None):
 
     db.init_db(app.config["DB_PATH"])
 
-    from app import auth, main, survey
+    from app import auth, books, filters, main, survey
     app.register_blueprint(auth.bp)
     app.register_blueprint(survey.bp)
     app.register_blueprint(main.bp)
+    app.register_blueprint(books.bp)
+    app.register_blueprint(filters.bp)
     return app
