@@ -1,6 +1,6 @@
 # _CONTEXT.md — « Et maintenant, je lis quoi ? »
 
-Dernière mise à jour : 7 octobre 2026 (v2)
+Dernière mise à jour : 7 octobre 2026 (v4)
 
 ## Rôles
 - Mathias : pilote, ne code pas. Valide les décisions, copie les prompts dans Claude Code (VSCode), rapporte les résultats.
@@ -10,7 +10,12 @@ Dernière mise à jour : 7 octobre 2026 (v2)
 ## Projet
 Application Python (projet MBA) de recommandation de livres francophones. Un lecteur crée un compte, répond à un questionnaire obligatoire de 10 questions, obtient un profil, puis une page d'accueil à 3 sections. Il suit ses lectures, note les livres, et ses notes font évoluer son profil.
 
-Documents de référence (fournis par Mathias) : périmètre initial, cahier des charges v1.0, barème détaillé du questionnaire, 3 maquettes d'interface (questionnaire, profil, accueil), slides de cadrage du professeur (MIA Projet Python, atelier technique 2026/2027).
+Documents de référence (fournis par Mathias) : périmètre initial, cahier des charges v1.0, **cahier des charges v2 (7 oct., issu d'une démo ChatGPT « version 7 »)**, barème détaillé du questionnaire, 3 maquettes d'interface, slides de cadrage du professeur (MIA Projet Python 2026/2027).
+
+## Tri du cahier des charges v2 (validé par Mathias)
+Refusé : FastAPI + PostgreSQL + front PWA séparé ; catalogue Open Library en direct (le barème exige des tags calculés hors ligne) ; hors-ligne / service worker.
+Intégré : 8 groupes de genres à l'écran (12 catégories en données) ; thèmes du CDC (8, dont « survie » ajouté) ; 6 ambiances conservées avec libellés rapprochés ; 6 familles de profil (psychologie, suspense, imaginaire, histoire, réel et idées, éclectique) qui servent au groupe « lecteurs comme toi » ; note facultative et modifiable (préférences apprises recalculées depuis toutes les notes) ; sections communautaires masquées sous 5 lecteurs contributeurs ; lecture du moment, pile à lire (Monter/Descendre, pas de glisser-déposer), statuts à lire / en cours / terminé, plusieurs lectures en cours ; trois univers ; bouton renouveler ; recherche titre/auteur dans le catalogue local ; statistiques personnelles ; filtres communs persistés par compte ; Q8 limitée aux 8 groupes (pas de « violence graphique » / « young adult » : données absentes).
+Reporté (fin de projet si temps) : bilan PNG 1080×1350, manifest PWA sans hors-ligne, suppression de compte.
 
 ## Cadre académique (projet noté)
 - Groupe de 4 à 6, 1 manager responsable du temps, si possible 1 développeur. Approche itérative, jalons réalistes, un livrable à la fin.
@@ -27,6 +32,9 @@ Documents de référence (fournis par Mathias) : périmètre initial, cahier des
 | Auth | Pseudo + e-mail + mot de passe haché (werkzeug). Sessions Flask. Décorateur `@profile_required` sur toute route hors inscription/connexion/questionnaire. |
 | Catalogue | Français uniquement, 12 catégories, description ≥ 200 car., pageCount 60-1500. Pas de fusion de catégories à l'écran (les 12 restent distinctes, libellés chaleureux). |
 | Q2/Q3/Q4 | Thèmes (Q2) et ambiance (Q3) dérivés par lexiques de mots-clés sur la description. Q4 format : posée et stockée mais non calculée dans le MVP. |
+| Dimensions neutres | Une dimension neutre au questionnaire reste hors de P même après apprentissage par les notes ; valeurs apprises conservées (« tendances observées »). |
+| Départage | (S, nombre de dimensions calculées, avg_rating si ≥ 5 votes, id). Un seul livre par auteur dans une liste. |
+| Catalogue figé | clean.py ne sera plus retouché. Résidus de non-fiction acceptés (ex. « Lire Patrick Modiano », « Crime & châtiment » musée d'Orsay). |
 | Q6 classiques | Règle MVP : 100 % si publié il y a > 25 ans, 50 % sinon. |
 | Q7 langues | Posée pour le cahier des charges, sans effet (catalogue 100 % français). À documenter. |
 | Moteurs | Le barème (score S) classe « À lire ensuite ». TF-IDF + cosinus sert aux livres proches depuis une fiche et à l'indice de nouveauté N (Q10). |
@@ -40,22 +48,22 @@ Documents de référence (fournis par Mathias) : périmètre initial, cahier des
 - Confiance = poids renseignés ÷ 84 (« toutes les longueurs / périodes » exclues du dénominateur).
 - Après lecture : note 4-5 → +0,05 sur genres/thèmes/ambiance du livre ; 1-2 → −0,05 ; plafond ±0,30. Exclusions manuelles priment.
 
-## Questionnaire (codes)
-- Q1 genres : les 12 catégories + « Autre » (texte, sans effet). Multi.
-- Q2 thèmes (14) : famille, amour, amitie, guerre, crime, voyage, societe, science, nature, memoire, deuil, secret, initiation, art. Multi.
-- Q3 ambiance (6 + varie) : sombre, tendue, legere, intimiste, epique, poetique. Multi.
-- Q4 format : lineaire, rapide, choral, saga, court, introspectif, sans_pref. Multi, stocké seulement.
+## Questionnaire (codes) — src/questions.py
+- Q1 genres : 8 groupes (GROUPS) dépliés en catégories : Littérature générale ; Thriller & polar (thriller, policier) ; Science-fiction (science-fiction, dystopie) ; Fantasy & fantastique (fantastique, horreur) ; Histoire & aventure (roman historique, aventure) ; Romance ; Biographies & récits ; Essais & idées. + « Autre » (texte, sans effet). Multi.
+- Q2 thèmes proposés (8) : famille, secret, survie, societe, amour, crime (« Enquête »), science, memoire (« Destins historiques »). 6 autres codes existent en données (amitie, guerre, voyage, nature, deuil, initiation, art) mais ne sont pas proposés. Multi.
+- Q3 ambiance (6 + varie) : sombre, tendue (« Haletante »), legere (« Drôle et réconfortante »), intimiste (« Psychologique et intime »), epique (« Épique et dépaysante »), poetique (« Contemplative et poétique »). Multi.
+- Q4 format : fresque, huis clos, intrigue rapide, première personne, récit choral, saga familiale, enquête, sans préférence. Multi, stocké seulement.
 - Q5 longueur : court (< 250), moyen (250-450), long (> 450), toutes. Unique.
-- Q6 période : nouveautes (≤ 3 ans), recents (≤ 10), classiques, toutes. Unique.
-- Q7 langues : fr, en, autre, plusieurs. Multi, sans effet.
-- Q8 à éviter : les 12 catégories + aucun. Multi.
+- Q6 période : nouveautes (≤ 3 ans), recents (≤ 10), classiques (> 25 ans), toutes. Unique.
+- Q7 langues : fr, en, es, ar, zh, hi, toutes. Multi, sans effet (catalogue français, signalé à l'écran).
+- Q8 à éviter : les 8 groupes + aucune. Multi.
 - Q9 priorité : themes, nouveau, profil, temps, varier. Unique.
 - Q10 découverte : proche (0×N), mixte (0,5×N), surprise (1×N), sans_pref (0,5×N). Unique.
 - Chaque question a l'option neutre « Je ne sais pas / je ne souhaite pas me prononcer ».
 
 ## Schéma SQLite (data/books.db)
 - books : id, google_id, title, authors (JSON), description, categories_raw (JSON), main_category, categories (JSON, 12 cat. cibles), themes (JSON), ambiance (JSON), published_year, page_count, language, isbn, thumbnail, info_link, avg_rating, ratings_count
-- users : id, username, password_hash, created_at, profile_label, profile_vector (JSON) — à ajouter : email, profile_confidence
+- users : id, username, email, password_hash, created_at, profile_label, profile_family, profile_confidence, profile_vector (JSON : genres, themes, ambiances, formats, length, period, languages, exclusions, priority, discovery, answered, initial, label, label_description, label_tags, family)
 - survey_answers : user_id, question_id, answer, answered_at
 - readings : id, user_id, book_id, start_date, end_date, rating, comment
 
@@ -65,31 +73,46 @@ livres-reco/
   CLAUDE.md  requirements.txt  .env (clé Google, gitignoré)  .env.example
   data/raw/*.json (36+ fichiers, 12 Mo)   data/books.db
   docs/maquettes/{questionnaire,profil,accueil}.png
-  src/collect.py  clean.py  tagging.py  db.py  engine.py  profile.py
-  app/ (Flask : __init__.py, routes, templates/, static/)  — à créer
+  src/collect.py  clean.py  tagging.py  stopwords_fr.py  db.py  engine.py  questions.py  profile.py
+  app/__init__.py  auth.py (profile_required)  survey.py  main.py  templates/  static/css/style.css  static/js/survey.js
+  run.py
   tests/ (conftest.py + test_*.py)
 ```
-Environnement : macOS, Python 3.11 via `/opt/homebrew/bin/python3.11`, `.venv`. Commandes : `.venv/bin/python -m src.collect|clean|tagging`, `.venv/bin/pytest`.
+Environnement : macOS, Python 3.11 via `/opt/homebrew/bin/python3.11`, `.venv`. Commandes : `.venv/bin/python -m src.collect|clean|tagging|engine "titre"|profile --demo`, `.venv/bin/pytest`, `.venv/bin/python run.py` (http://127.0.0.1:5000).
 
 ## État d'avancement
 - [x] 1. Init, CLAUDE.md, db.py
-- [x] 2. collect.py — clé API en place, 36 requêtes, 8 356 items bruts, 7 850 distincts
-- [x] 3a. clean.py — filtres langue/auteurs/description/pages/année/titres, dédoublonnage, SQLite. Après filtre non-fiction : 1 069 livres (thriller 195, policier 172, dystopie 117, biographie 95, fantastique 91, litt. gén. 84, horreur 73, aventure 68, rom. historique 65, romance 57, SF 29, essai 23). Médiane 276 pages, 70 % publiés après 2010.
-- [x] B. CLAUDE.md mis à jour (Flask + Jinja2)
-- [x] 3b. tagging.py — lexiques 21-25 mots-clés + mots STRONG ; filtre non-fiction ajouté à clean.py (181 rejets). 1 069 livres. Thèmes : 74,5 % couverts ; ambiance : 45,8 % (accepté, pas d'optimisation supplémentaire). 39 tests.
-- [ ] 3c. Rééquilibrage SF (29) / essai (23) / romance (57) / litt. gén. (84) — 13 requêtes ajoutées, prompt donné, en cours
-- [ ] 4. engine.py — TF-IDF, cosinus, livres proches, nouveauté N
-- [ ] 5. profile.py — calcul du profil depuis les réponses, score S, mise à jour par les notes
-- [ ] 6. Flask : auth + questionnaire + gating
-- [ ] 7. Flask : accueil 3 sections + filtres + fiche livre
-- [ ] 8. Flask : suivi lecture, notes, bibliothèque, page profil + seed de démo
-- [ ] 9. Évaluation : jeu de test 20 livres, temps de réponse, cohérence (3/5 jugées pertinentes)
+- [x] 2. collect.py — clé API, 49 requêtes, ~11 000 items bruts
+- [x] 3. clean.py + tagging.py — catalogue figé à **1 311 livres** (romance 218, thriller 177, policier 161, SF 150, essai 99, dystopie 96, biographie 89, fantastique 83, litt. gén. 77, aventure 59, horreur 53, rom. historique 49). Filtres : langue, auteurs, description ≥ 200, pages 60-1500, année, titres, non-fiction (catégories Google + titres + vocabulaire d'étude + langue du contenu ≥ 15 % de mots vides), texte d'éditeur répété, doublons d'édition. Thèmes 75 %, ambiance ~40 %.
+- [x] 4. engine.py — TF-IDF (11 000 termes), 0,8 cos + 0,2 Jaccard, explication « Recommandé pour… », novelty, cache pkl. ~4 ms par requête.
+- [x] 5. profile.py + questions.py — barème implémenté (ex. A vérifié : P 76,1, confiance 54,8 %), libellés, familles, recompute_learned. --demo validé.
+- [x] 6. Flask : inscription/connexion, questionnaire 10 pages avec reprise, gating, /profil-cree, accueil provisoire. 122 tests.
+- [x] 6b. Réconciliation CDC v2 (groupes, thèmes, familles, notes recalculées).
+- [x] 7a. Fiche livre (couverture Open Library → Google → carte colorée), actions Commencer/Terminer, recherche titre/auteur, filtres persistés par compte (app/filters.py, layout.html).
+- [x] 7b. Accueil complet (src/home.py, app/main.py) : lecture du moment, Choisis pour toi + Renouveler (pénalité 100 pts en session) + Voir toute la sélection (lots de 24), Lecteurs comme toi, Populaires J-6..J, seuil 5 lecteurs → Sélection {famille}, /explorer 3 univers (NEIGHBORS pour compléter).
+- [x] 8. Bibliothèque 3 onglets, pile Monter/Descendre, avis (cœurs, note facultative, commentaire ≤ 2000), /profil avec tendances observées, Refaire le questionnaire (brouillon users.draft_answers).
+- [x] 9a. Seed : 46 comptes fictifs (is_demo, mdp demo1234, <pseudo>@exemple.fr), deux vagues à graines fixes 2026/2027 ; toutes les familles ≥ 6 contributeurs ; 36 actifs/semaine ; livres du moment par famille (MOMENT_PICKS). `python -m src.seed --reset`.
+- [x] Masquage : books.hidden, src/hidden_books.txt, `python -m src.hide "<titre|id>"`, --apply, --list ; 19 livres masqués ; `python -m src.suspects` (trop large, 435 résultats).
+- [x] 9b. Statistiques (src/stats.py, /statistiques) : 7 indicateurs, None jamais 0.
+- [ ] Test visuel complet par Mathias (compte suspense)
+- [ ] 10. Évaluation (src/evaluate.py → docs/evaluation.md + evaluation_humaine.md)
+- [ ] 11. README, GitHub, schéma d'architecture, slides RNCP, retour d'expérience
+- [ ] Charte graphique (Mathias fournira ses choix)
+- Reporté : bilan PNG, manifest PWA, suppression de compte
+- Tests : 200 au dernier comptage.
+
+## Retour d'expérience (matière pour la soutenance)
+- Google Books : max 20 résultats/page malgré maxResults=40 ; `subject:` seul renvoie 0 ; `langRestrict=fr` laisse passer ~30 % de non-français ; ne distingue pas fiction et études → 6 passes de nettoyage.
+- TF-IDF sur descriptions courtes : voisins faibles quand la description est une dédicace (Balzac) ou sans thème (Vargas).
+- Le barème « donnée manquante = dimension ignorée » avantage les livres peu renseignés → départage par nombre de dimensions calculées.
+- Streamlit abandonné dès que les maquettes sont arrivées ; Flask + Jinja2 choisi.
+- CDC v2 (démo ChatGPT) trié plutôt qu'appliqué : simplicité exigée par le cours.
 
 ## Points ouverts
-- Résultat du rééquilibrage : aucune catégorie < 60 livres ?
-- Résidu de non-fiction dans le catalogue (ex. « Le mystère Fred Vargas ») : accepté, pas de règle supplémentaire.
-- Libellés d'écran des 12 catégories (ton maquette) à fixer au prompt 6.
-- Contenu du profile_label (ex. « Suspense & tension ») : règle de nommage à définir au prompt 5 (2 catégories dominantes → libellé + description + 4 tags).
+- Catalogue : ne plus relancer clean.py (ids référencés par les lectures) ; masquer via src.hide uniquement.
+- recompute_learned : somme des écarts puis plafond ±0,30 une seule fois (indépendant de l'ordre des notes).
+- Le serveur Flask garde l'index TF-IDF en mémoire : le relancer après un masquage.
+- Comptes réels de Mathias : toto (éclectique) ; créer un compte suspense pour la soutenance.
 
 ## Règles de travail
 - Un prompt = un module. `/clear` au changement de module, pas pour une correction du module en cours.
