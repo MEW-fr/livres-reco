@@ -8,4 +8,5 @@ venv/
 data/
 .env
 *.pdf
+!docs/charte/*.pdf
 *.pkl
